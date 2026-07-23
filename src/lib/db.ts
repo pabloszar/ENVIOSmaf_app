@@ -23,6 +23,14 @@ export function db(): SupabaseClient {
 
   client = createClient(url, key, {
     auth: { persistSession: false, autoRefreshToken: false },
+    // Supabase consulta con `fetch`, que Next.js cachea por defecto. Sin esto,
+    // tras editar y hacer router.refresh() la página seguiría mostrando los
+    // datos viejos (parecería que no se guardó). `no-store` obliga a leer
+    // siempre lo último de la base.
+    global: {
+      fetch: (input: RequestInfo | URL, init?: RequestInit) =>
+        fetch(input, { ...init, cache: 'no-store' }),
+    },
   });
   return client;
 }
