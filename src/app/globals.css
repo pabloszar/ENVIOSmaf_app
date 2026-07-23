@@ -1,0 +1,41 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html {
+    -webkit-font-smoothing: antialiased;
+  }
+  body {
+    @apply bg-surface-sunk text-ink;
+    font-variant-numeric: tabular-nums;
+  }
+  /* Los montos se leen en columna: que los dígitos no bailen. */
+  .cifra {
+    font-variant-numeric: tabular-nums;
+    @apply font-mono;
+  }
+}
+
+@layer components {
+  .tarjeta {
+    @apply rounded-lg border border-surface-line bg-surface p-5;
+  }
+  .etiqueta {
+    @apply text-xs font-medium uppercase tracking-wide text-ink-mute;
+  }
+  .campo {
+    @apply w-full rounded-md border border-surface-line bg-surface px-3 py-2 text-sm
+           outline-none transition focus:border-brand focus:ring-2 focus:ring-brand/15;
+  }
+  .boton {
+    @apply inline-flex items-center justify-center gap-2 rounded-md bg-brand px-4 py-2
+           text-sm font-medium text-white transition hover:bg-brand/90
+           disabled:cursor-not-allowed disabled:opacity-50;
+  }
+  .boton-sec {
+    @apply inline-flex items-center justify-center gap-2 rounded-md border border-surface-line
+           bg-surface px-4 py-2 text-sm font-medium text-ink-soft transition
+           hover:bg-surface-sunk;
+  }
+}
