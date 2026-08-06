@@ -37,7 +37,7 @@ export async function POST(req: Request) {
       const filaEnvio = soloCampos(e, [
         'cliente_id', 'vendedor_id', 'orden_venta', 'destino', 'lat', 'lng', 'zona',
         'distancia_km', 'tamano_carga', 'num_articulos', 'num_pisos', 'precio',
-        'precio_sugerido_cotizador', 'uso_cotizador', 'calificacion', 'notas',
+        'precio_sugerido_cotizador', 'uso_cotizador', 'calificacion', 'a_credito', 'notas',
       ]);
       filaEnvio.ruta_id = ruta.id;
       filaEnvio.secuencia = 1;

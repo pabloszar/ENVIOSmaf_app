@@ -7,6 +7,8 @@ const NUM = ['monto'];
 const CAMPOS = [
   'fecha', 'categoria', 'tipo', 'monto', 'ruta_id', 'vehiculo_id', 'contacto_id',
   'descripcion', 'metodo_pago', 'comprobante_url',
+  // Quién puso el dinero. Vacío = la caja de Envíos MAF, que es lo normal.
+  'pagado_por', 'pagado_por_otro',
 ];
 
 export async function GET(req: Request) {
@@ -25,17 +27,30 @@ export async function GET(req: Request) {
   });
 }
 
+/**
+ * Acepta un gasto suelto o una lista. Capturar el viaje —gasolina, casetas,
+ * comida— es una sola operación para quien la vive, así que se guarda de un jalón.
+ */
 export async function POST(req: Request) {
   return conManejo(async () => {
-    const cuerpo = limpiarNumericos(await req.json(), NUM);
-    const fila = soloCampos(cuerpo, CAMPOS);
-    fila.fecha ??= new Date().toISOString().slice(0, 10);
-    fila.tipo ??= 'operativo';
-    if (!fila.categoria) throw new Error('Elige la categoría del gasto.');
-    if (fila.monto == null) throw new Error('Falta el monto.');
-    const { data, error } = await db().from('gastos').insert(fila).select().single();
+    const cuerpo = await req.json();
+    const entradas = Array.isArray(cuerpo) ? cuerpo : [cuerpo];
+    if (entradas.length === 0) throw new Error('No hay gastos que guardar.');
+
+    const hoy = new Date().toISOString().slice(0, 10);
+    const filas = entradas.map((entrada, i) => {
+      const fila = soloCampos(limpiarNumericos(entrada, NUM), CAMPOS);
+      fila.fecha ??= hoy;
+      fila.tipo ??= 'operativo';
+      const cual = entradas.length > 1 ? ` de la línea ${i + 1}` : '';
+      if (!fila.categoria) throw new Error(`Elige la categoría del gasto${cual}.`);
+      if (fila.monto == null) throw new Error(`Falta el monto${cual}.`);
+      return fila;
+    });
+
+    const { data, error } = await db().from('gastos').insert(filas).select();
     if (error) throw new Error(error.message);
-    return data;
+    return Array.isArray(cuerpo) ? data : data?.[0];
   });
 }
 

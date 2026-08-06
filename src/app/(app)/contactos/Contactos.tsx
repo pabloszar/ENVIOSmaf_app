@@ -59,7 +59,7 @@ export default function Contactos({ contactos }: { contactos: Contacto[] }) {
         {FILTROS.map((f) => (
           <button key={f} onClick={() => setFiltro(f)}
             className={`rounded-full px-3 py-1 text-xs font-medium transition ${
-              filtro === f ? 'bg-brand text-white' : 'bg-surface text-ink-mute hover:bg-surface-sunk'}`}>
+              filtro === f ? 'bg-brand text-surface-sunk' : 'bg-surface text-ink-mute hover:bg-surface-sunk'}`}>
             {f === 'todos' ? 'Todos' : ETIQUETA_ROL[f]}
           </button>
         ))}
@@ -120,7 +120,7 @@ export default function Contactos({ contactos }: { contactos: Contacto[] }) {
                   return (
                     <button key={r.v} type="button" onClick={() => toggleRol(r.v)}
                       className={`rounded-full px-3 py-1 text-xs font-medium transition ${
-                        activo ? 'bg-brand text-white' : 'bg-surface-sunk text-ink-mute hover:bg-surface-line'}`}>
+                        activo ? 'bg-brand text-surface-sunk' : 'bg-surface-sunk text-ink-mute hover:bg-surface-line'}`}>
                       {r.label}
                     </button>
                   );

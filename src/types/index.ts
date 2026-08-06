@@ -112,6 +112,7 @@ export interface Envio {
   precio_sugerido_cotizador: number | null;
   uso_cotizador: boolean;
   calificacion: number | null;
+  a_credito: boolean;
   notas: string | null;
 }
 
@@ -149,6 +150,67 @@ export interface Cobro {
   monto: number;
   metodo: string | null;
   notas: string | null;
+}
+
+/** Fila de la vista v_pnl_mensual */
+export interface PnlMes {
+  mes: string;
+  viajes: number;
+  paradas: number;
+  ingreso: number;
+  gasolina: number;
+  casetas: number;
+  comida: number;
+  gastos_viaje: number;
+  comisiones: number;
+  /** Comisiones capturadas como gasto de ruta (así vino el histórico). */
+  comision_gasto: number;
+  renta_unidad: number;
+  admon: number;
+  utilidad_operativa: number;
+  gastos_fijos: number;
+  utilidad_neta: number;
+  inversion: number;
+  retiros: number;
+  margen_operativo_pct: number | null;
+  margen_neto_pct: number | null;
+  km: number;
+  ingreso_por_km: number | null;
+  costo_viaje_por_km: number | null;
+}
+
+/**
+ * Fila de la vista v_envio_pnl: el envío con su parte prorrateada de los
+ * costos de la ruta. Es la base de los cortes por destino, cliente y tamaño.
+ */
+export interface EnvioPnl {
+  envio_id: string;
+  ruta_id: string;
+  folio: number;
+  fecha: string;
+  estado: EstadoRuta;
+  vehiculo_id: string | null;
+  vehiculo: string | null;
+  secuencia: number;
+  destino: string;
+  zona: string;
+  cliente_id: string | null;
+  cliente: string | null;
+  vendedor_id: string | null;
+  tamano_carga: TamanoCarga | null;
+  distancia_km: number | null;
+  a_credito: boolean;
+  paradas: number;
+  parte: number;
+  ingreso: number;
+  gastos_viaje: number;
+  gasolina: number;
+  casetas: number;
+  comisiones: number;
+  renta_unidad: number;
+  admon: number;
+  utilidad: number;
+  margen_pct: number | null;
 }
 
 /** Fila de la vista v_ruta_pnl_full */

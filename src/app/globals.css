@@ -5,37 +5,76 @@
 @layer base {
   html {
     -webkit-font-smoothing: antialiased;
+    color-scheme: dark;
   }
+  /**
+   * El fondo no es negro plano: lleva dos manchas de color muy tenues, fijas,
+   * que le dan profundidad al vidrio de las tarjetas. Sin esto, "glassy" no se
+   * distingue de "gris".
+   */
   body {
     @apply bg-surface-sunk text-ink;
     font-variant-numeric: tabular-nums;
+    background-image:
+      radial-gradient(60rem 40rem at 12% -10%, rgba(20, 160, 143, 0.10), transparent 60%),
+      radial-gradient(50rem 34rem at 95% 8%, rgba(215, 240, 0, 0.045), transparent 55%);
+    background-attachment: fixed;
   }
   /* Los montos se leen en columna: que los dígitos no bailen. */
   .cifra {
     font-variant-numeric: tabular-nums;
     @apply font-mono;
   }
+  ::selection {
+    @apply bg-acento/25 text-ink;
+  }
 }
 
 @layer components {
+  /**
+   * La tarjeta es vidrio: superficie translúcida, filo de luz arriba y un
+   * degradado que se aclara hacia la esquina superior izquierda, como si la
+   * luz entrara por ahí. Es lo que separa "caja con borde" de "material".
+   */
   .tarjeta {
-    @apply rounded-lg border border-surface-line bg-surface p-5;
+    @apply relative rounded-2xl border border-white/[0.07] p-5 shadow-vidrio
+           bg-gradient-to-br from-white/[0.055] via-white/[0.025] to-transparent
+           backdrop-blur-xl;
+  }
+  /* Variante sin relleno interno, para tarjetas que contienen tablas. */
+  .tarjeta-tabla {
+    @apply relative overflow-hidden rounded-2xl border border-white/[0.07] shadow-vidrio
+           bg-gradient-to-br from-white/[0.055] via-white/[0.025] to-transparent
+           backdrop-blur-xl;
+  }
+  /**
+   * Halo de color detrás de una tarjeta. Da el degradado suave de las
+   * referencias sin pintar el fondo entero: se queda en una esquina y se
+   * difumina, así que nunca compite con las cifras.
+   */
+  .halo {
+    @apply pointer-events-none absolute -right-10 -top-14 h-40 w-40 rounded-full blur-3xl;
   }
   .etiqueta {
     @apply text-xs font-medium uppercase tracking-wide text-ink-mute;
   }
   .campo {
-    @apply w-full rounded-md border border-surface-line bg-surface px-3 py-2 text-sm
-           outline-none transition focus:border-brand focus:ring-2 focus:ring-brand/15;
+    @apply w-full rounded-xl border border-surface-line bg-surface-raised px-3 py-2 text-sm
+           text-ink outline-none transition placeholder:text-ink-mute
+           focus:border-brand focus:ring-2 focus:ring-brand/25;
   }
   .boton {
-    @apply inline-flex items-center justify-center gap-2 rounded-md bg-brand px-4 py-2
-           text-sm font-medium text-white transition hover:bg-brand/90
+    @apply inline-flex items-center justify-center gap-2 rounded-full bg-brand px-4 py-2
+           text-sm font-medium text-surface-sunk transition hover:bg-brand/90
            disabled:cursor-not-allowed disabled:opacity-50;
   }
   .boton-sec {
-    @apply inline-flex items-center justify-center gap-2 rounded-md border border-surface-line
-           bg-surface px-4 py-2 text-sm font-medium text-ink-soft transition
-           hover:bg-surface-sunk;
+    @apply inline-flex items-center justify-center gap-2 rounded-full border border-surface-line
+           bg-surface-raised px-4 py-2 text-sm font-medium text-ink-soft transition
+           hover:border-ink-mute hover:text-ink;
+  }
+  /* Fila de tabla: al pasar el cursor se levanta, no se colorea. */
+  .fila {
+    @apply border-t border-surface-line transition hover:bg-surface-raised;
   }
 }
