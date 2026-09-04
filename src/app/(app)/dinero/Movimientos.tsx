@@ -3,10 +3,12 @@
 import { useMemo, useState } from 'react';
 import Link from 'next/link';
 import { api } from '@/lib/cliente';
-import { Campo, Input, Boton, BotonMini, Chip, Aviso, Modal, AccionesModal, CampoMonto } from '@/components/ui';
-import QuienTuvo, { type Custodia, custodiaABody } from '@/components/QuienTuvo';
+import { BotonMini, Chip } from '@/components/ui';
 import { mxn } from '@/lib/pricing';
 import { fechaCorta } from '@/lib/fechas';
+import { METODO_INFO, esMetodo, desgloseABody, type Desglose } from '@/lib/cobro';
+import ModalComoSePago, { type ObjetoCobro } from './ModalComoSePago';
+import type { MovCobro } from './tipos';
 
 /**
  * El flujo, renglón por renglón.
@@ -34,34 +36,48 @@ export interface Movimiento {
   rutaId?: string;
   envioId?: string;
   precio?: number;
+  destino?: string;
+  aCredito?: boolean;
+  /** Con qué se pagó: efectivo, transferencia o cobrado en tienda. */
+  metodo?: string | null;
+  /**
+   * Movió el fondo pero no tu caja. El abono de lo que Tiendas MAF cobró es
+   * el caso: ese dinero nunca estuvo en tu mano, así que buscarlo en el
+   * estado de cuenta sería perseguir una salida que el banco no tiene.
+   */
+  fueraDeCaja?: boolean;
   /** Quién tuvo ese dinero. null = tu caja, que es lo normal. */
   enManosDe?: string | null;
-  custodiaId?: string | null;
-  custodiaOtro?: string;
 }
 
 type Filtro = 'todo' | 'entrada' | 'salida';
 
 export default function Movimientos({
-  movimientos, etiquetaPeriodo, cargando, accion, gente,
+  movimientos, etiquetaPeriodo, cobrosPorEnvio, contactos, cargando, accion, error, setError,
 }: {
   movimientos: Movimiento[];
   etiquetaPeriodo: string;
+  /** El desglose ya guardado de cada envío, para sembrar la corrección. */
+  cobrosPorEnvio: Map<string, MovCobro[]>;
+  contactos: { id: string; nombre: string }[];
   cargando: boolean;
   accion: (fn: () => Promise<void>) => Promise<void>;
-  /** Choferes y vendedores, para ofrecerlos sin buscarlos en una lista. */
-  gente: { id: string; nombre: string }[];
+  error: string | null;
+  setError: (v: string | null) => void;
 }) {
   const [filtro, setFiltro] = useState<Filtro>('todo');
-  const [ajuste, setAjuste] = useState<Movimiento | null>(null);
+  const [ajuste, setAjuste] = useState<ObjetoCobro | null>(null);
 
   const orden = useMemo(
     () => [...movimientos].sort((a, b) => a.fecha.localeCompare(b.fecha) || a.concepto.localeCompare(b.concepto)),
     [movimientos],
   );
 
-  const entro = orden.filter((m) => m.tipo === 'entrada').reduce((s, m) => s + m.monto, 0);
-  const salio = orden.filter((m) => m.tipo === 'salida').reduce((s, m) => s + m.monto, 0);
+  // Lo que no pasó por la caja no cuenta para conciliar: es un movimiento
+  // real del negocio, pero el banco y el efectivo nunca lo van a mostrar.
+  const enCaja = orden.filter((m) => !m.fueraDeCaja);
+  const entro = enCaja.filter((m) => m.tipo === 'entrada').reduce((s, m) => s + m.monto, 0);
+  const salio = enCaja.filter((m) => m.tipo === 'salida').reduce((s, m) => s + m.monto, 0);
   const supuestas = orden.filter((m) => m.supuesto);
   const montoSupuesto = supuestas.reduce((s, m) => s + m.monto, 0);
 
@@ -70,7 +86,7 @@ export default function Movimientos({
   const visibles = orden.filter((m) => filtro === 'todo' || m.tipo === filtro);
   let corrido = 0;
   const filas = visibles.map((m) => {
-    corrido += m.tipo === 'entrada' ? m.monto : -m.monto;
+    if (!m.fueraDeCaja) corrido += m.tipo === 'entrada' ? m.monto : -m.monto;
     return { ...m, acumulado: corrido };
   });
 
@@ -98,9 +114,10 @@ export default function Movimientos({
             <span className="font-medium text-warn">
               {supuestas.length} entradas por {mxn(montoSupuesto)} no tienen comprobante.
             </span>{' '}
-            Son fletes de contado: la app los da por cobrados al entregarse. Si alguno entró
-            incompleto —descuento, pago parcial, quedó a deber— corrígelo con{' '}
-            <span className="text-ink">Ajustar</span> y la diferencia se va sola a cuentas por cobrar.
+            Son fletes de contado: la app los da por cobrados en efectivo al entregarse. Si alguno
+            se pagó de otra forma —transferencia, en la tienda— o entró incompleto, dilo con{' '}
+            <span className="text-ink">Ajustar</span>: la diferencia se va sola a cuentas por cobrar
+            y el monto deja de contar como efectivo.
           </div>
         )}
 
@@ -136,6 +153,14 @@ export default function Movimientos({
                           <span className="rounded-full border border-warn/30 bg-warn/10 px-1.5 py-0.5
                             text-[10px] font-medium text-warn">sin comprobante</span>
                         )}
+                        {esMetodo(m.metodo) && (
+                          <span className="rounded-full border border-white/[0.12] bg-white/[0.05] px-1.5 py-0.5
+                            text-[10px] font-medium text-ink-soft">{METODO_INFO[m.metodo].corto}</span>
+                        )}
+                        {m.fueraDeCaja && (
+                          <span className="rounded-full border border-acento/30 bg-acento/10 px-1.5 py-0.5
+                            text-[10px] font-medium text-acento">no toca tu caja</span>
+                        )}
                         {m.enManosDe && (
                           <span className="rounded-full border border-dato/30 bg-dato/10 px-1.5 py-0.5
                             text-[10px] font-medium text-dato">lo tuvo {m.enManosDe}</span>
@@ -153,8 +178,14 @@ export default function Movimientos({
                       {mxn(m.acumulado)}
                     </td>
                     <td className="px-5 py-2.5 text-right">
-                      {m.envioId && (
-                        <BotonMini onClick={() => setAjuste(m)}>Ajustar</BotonMini>
+                      {m.envioId && m.precio != null && (
+                        <BotonMini onClick={() => {
+                          setError(null);
+                          setAjuste({
+                            envioId: m.envioId!, destino: m.destino ?? m.concepto,
+                            fecha: m.fecha, precio: m.precio!, aCredito: m.aCredito ?? false,
+                          });
+                        }}>Ajustar</BotonMini>
                       )}
                     </td>
                   </tr>
@@ -176,98 +207,16 @@ export default function Movimientos({
         )}
       </section>
 
-      {/* La key remonta el formulario al cambiar de renglón: sin ella el campo
-          conservaría el monto tecleado para otro flete. */}
-      <AjustarCobro key={ajuste?.id ?? 'ninguno'} mov={ajuste} gente={gente}
-        onCerrar={() => setAjuste(null)} cargando={cargando} accion={accion} />
+      <ModalComoSePago objeto={ajuste}
+        cobros={ajuste ? cobrosPorEnvio.get(ajuste.envioId) ?? [] : []}
+        contactos={contactos} error={error} cargando={cargando}
+        onCerrar={() => setAjuste(null)}
+        onGuardar={(envioId, d: Desglose) => accion(async () => {
+          await api('/api/envios/cobro', {
+            method: 'PUT', body: { envio_id: envioId, ...desgloseABody(d) },
+          });
+          setAjuste(null);
+        })} />
     </div>
-  );
-}
-
-/**
- * Corregir cuánto entró de verdad en un flete.
- *
- * Solo pide el monto real. Todo lo demás —marcar el envío como crédito, dejar
- * el resto en cuentas por cobrar— lo deduce el servidor, porque son
- * consecuencias de ese número y no decisiones aparte que el usuario deba tomar.
- */
-function AjustarCobro({
-  mov, onCerrar, cargando, accion, gente,
-}: {
-  mov: Movimiento | null;
-  onCerrar: () => void;
-  cargando: boolean;
-  accion: (fn: () => Promise<void>) => Promise<void>;
-  gente: { id: string; nombre: string }[];
-}) {
-  const precio = Number(mov?.precio ?? 0);
-  const [monto, setMonto] = useState('');
-  const [error, setError] = useState<string | null>(null);
-  const [quien, setQuien] = useState<Custodia>({
-    contactoId: mov?.custodiaId ?? null, otro: mov?.custodiaOtro ?? '',
-  });
-
-  // El campo arranca con lo que la app cree que entró, para que corregir sea
-  // borrar dos dígitos y no escribir la cifra completa.
-  const valor = monto === '' ? String(mov?.monto ?? '') : monto;
-  const cobrado = Number(valor || 0);
-  const falta = Math.max(0, precio - cobrado);
-
-  async function guardar() {
-    if (!mov?.envioId) return;
-    setError(null);
-    if (cobrado > precio) { setError(`No puedes cobrar más que el flete (${mxn(precio)}).`); return; }
-    await accion(async () => {
-      await api('/api/cobros/ajustar', {
-        method: 'POST',
-        body: { envio_id: mov.envioId, cobrado: valor || 0, fecha: mov.fecha },
-      });
-      // Quién lo tuvo se guarda aparte: es del envío, no del cobro, y aplica
-      // igual si entró completo o incompleto.
-      await api('/api/envios', {
-        method: 'PATCH',
-        body: { id: mov.envioId, ...custodiaABody(quien, 'cobrado_por') },
-      });
-      setMonto('');
-      onCerrar();
-    });
-  }
-
-  return (
-    <Modal abierto={mov != null} onCerrar={onCerrar} titulo="¿Cuánto entró de verdad?" ancho="chico"
-      descripcion={mov?.concepto}>
-      <div className="space-y-4">
-        <div className="rounded-xl border border-white/[0.07] bg-white/[0.02] px-4 py-3 text-sm">
-          <div className="flex items-baseline justify-between">
-            <span className="text-ink-mute">Precio del flete</span>
-            <span className="cifra font-medium">{mxn(precio)}</span>
-          </div>
-        </div>
-
-        <Campo label="Entró" hint="Lo que de verdad se cobró, sin importar quién lo recibió.">
-          <CampoMonto valor={valor} onCambio={setMonto} autoFocus />
-        </Campo>
-
-        <QuienTuvo valor={quien} onCambio={setQuien} etiqueta="¿Quién lo cobró?" sugeridos={gente} />
-
-        <p className="text-sm text-ink-mute">
-          {falta > 0 ? (
-            <>Quedan <span className="cifra text-warn">{mxn(falta)}</span> por cobrar. El envío pasa a
-            crédito y aparece en la lista de quién te debe.</>
-          ) : (
-            <>El flete queda como cobrado completo, sin saldo pendiente.</>
-          )}
-        </p>
-
-        <Aviso error={error} />
-
-        <AccionesModal>
-          <Boton variante="fantasma" onClick={onCerrar}>Cancelar</Boton>
-          <Boton onClick={guardar} disabled={cargando}>
-            {cargando ? 'Guardando…' : 'Guardar'}
-          </Boton>
-        </AccionesModal>
-      </div>
-    </Modal>
   );
 }

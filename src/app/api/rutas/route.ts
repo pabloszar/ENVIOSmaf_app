@@ -26,6 +26,10 @@ export async function POST(req: Request) {
     const fila = soloCampos(cuerpo, CAMPOS);
     fila.fecha ??= new Date().toISOString().slice(0, 10);
     fila.estado ??= 'agendada';
+    // Los km que se teclean en el alta rápida son de alguien que sabe cuántos
+    // fueron. Marcarlos como suyos evita que un recálculo posterior del
+    // recorrido los reemplace por una estimación.
+    if (fila.km_total != null) fila.km_manual = true;
 
     const sb = db();
     const { data: ruta, error } = await sb.from('rutas').insert(fila).select().single();

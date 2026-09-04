@@ -102,7 +102,7 @@ export default function Rutas({
             precio: f.precio || 0,
             a_credito: f.a_credito,
             tamano_carga: f.tamano_carga || null,
-            // Los km del viaje son, por ahora, los de esta primera parada: así
+            // Los km del viaje son, por ahora, los de esta primera misión: así
             // el total de la ruta sigue cuadrando cuando se agreguen más.
             distancia_km: f.km_total || null,
           },
@@ -126,35 +126,44 @@ export default function Rutas({
       {/* ── Cabecera editorial ── */}
       <div className="flex flex-wrap items-end justify-between gap-6">
         <div>
-          <p className="etiqueta">Operación</p>
-          <h1 className="mt-2 text-4xl font-medium tracking-tight">Rutas y envíos</h1>
-          <p className="mt-2 max-w-lg text-sm text-ink-mute">
-            El viaje carga los gastos; cada parada, su ingreso.
-          </p>
+          <h1 className="text-3xl font-medium tracking-tight md:text-4xl">Rutas y envíos</h1>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-2 md:gap-3">
           <div className="flex gap-1 rounded-full border border-white/[0.07] bg-white/[0.03] p-1">
             <Chip activo={vista === 'lista'} onClick={() => setVista('lista')}>Lista</Chip>
             <Chip activo={vista === 'board'} onClick={() => setVista('board')}>Board</Chip>
           </div>
-          <Boton onClick={() => { setError(null); setAbierto(true); }}>Nueva ruta</Boton>
+          {/* El camino largo primero: cotizar deja la ruta con ubicaciones,
+              kilómetros reales y el orden de entrega ya resuelto. El alta
+              rápida sigue ahí para el viaje que se captura después de hecho. */}
+          <Link href="/cotizador" className="boton">Cotizar viaje</Link>
+          <Boton variante="suave" onClick={() => { setError(null); setAbierto(true); }}>
+            Captura rápida
+          </Boton>
         </div>
       </div>
 
       {/* ── Barra de filtros con el saldo de lo que se está viendo ── */}
       <div className="tarjeta flex flex-wrap items-center justify-between gap-x-8 gap-y-4 !py-4">
-        <div className="flex flex-wrap items-center gap-3">
+        <div className="flex w-full flex-wrap items-center gap-3 sm:w-auto">
           <FiltroPeriodo preset={preset} rango={rangoManual}
             onCambio={(p, r) => { setPreset(p); setRangoManual(r); }} />
           <input value={busca} onChange={(e) => setBusca(e.target.value)}
             placeholder="Buscar destino, cliente, chofer…" aria-label="Buscar"
-            className="w-56 rounded-full border border-surface-line bg-surface-raised px-3.5 py-1.5 text-xs
+            className="w-full rounded-full border border-surface-line bg-surface-raised px-3.5 py-1.5 text-xs
+              sm:w-56
               text-ink outline-none transition placeholder:text-ink-mute
               focus:border-brand focus:ring-2 focus:ring-brand/25" />
         </div>
-        <div className="flex flex-wrap items-baseline gap-x-6 gap-y-1 text-sm">
+        {/* En retícula mientras no quepan al hilo: sueltos, seis pares de
+            nombre y cifra se partían en tres renglones desalineados y ya no se
+            leían como un resumen sino como una lista de sobras. Tres columnas
+            y no dos porque con dos, "Por cobrar" no cabía junto a su cifra y
+            partía el renglón él solo. */}
+        <div className="grid w-full grid-cols-3 gap-x-3 gap-y-3 text-sm
+          sm:flex sm:w-auto sm:flex-wrap sm:items-baseline sm:gap-x-6 sm:gap-y-1">
           <Resumen etiqueta="Viajes" valor={String(visibles.length)} />
-          <Resumen etiqueta="Paradas" valor={String(total.paradas)} />
+          <Resumen etiqueta="Misiones" valor={String(total.paradas)} />
           <Resumen etiqueta="Venta" valor={mxn(total.ingreso)} />
           {hayCobros && (
             <Resumen etiqueta="Por cobrar" valor={mxn(total.porCobrar)}
@@ -178,7 +187,7 @@ export default function Rutas({
               <Campo label="Fecha">
                 <Input type="date" value={f.fecha} onChange={(e) => setF({ ...f, fecha: e.target.value })} />
               </Campo>
-              <Campo label="Km ida y vuelta" hint="Se suma solo cuando agregues más paradas.">
+              <Campo label="Km ida y vuelta" hint="Se suma solo cuando agregues más misiones.">
                 <Input type="number" inputMode="decimal" placeholder="0" value={f.km_total}
                   onChange={(e) => setF({ ...f, km_total: e.target.value })} />
               </Campo>
@@ -197,7 +206,7 @@ export default function Rutas({
             </div>
           </Bloque>
 
-          <Bloque titulo="La primera parada" paso={2}>
+          <Bloque titulo="La primera misión" paso={2}>
             <div className="space-y-4">
               <Campo label="¿A dónde va?">
                 <Input value={f.destino} autoFocus placeholder="Metepec, Toluca, CDMX…"
@@ -206,7 +215,7 @@ export default function Rutas({
               </Campo>
 
               <div className="grid gap-4 sm:grid-cols-2">
-                <Campo label="Precio del flete" hint="Es el ingreso de esta parada.">
+                <Campo label="Precio del flete" hint="Es el ingreso de esta misión.">
                   <CampoMonto valor={f.precio} onCambio={(v) => setF({ ...f, precio: v })} />
                 </Campo>
                 <Campo label="Cliente">
@@ -277,7 +286,105 @@ function Tabla({ rutas }: { rutas: FilaRuta[] }) {
   }
 
   return (
-    <section className="tarjeta-tabla">
+    <>
+      <ListaMovil rutas={rutas} />
+      <TablaEscritorio rutas={rutas} router={router} />
+    </>
+  );
+}
+
+/**
+ * Los mismos viajes, en un teléfono.
+ *
+ * La retícula de nueve columnas mide 62 rem —el doble que la pantalla— y
+ * dentro de su scroll horizontal no se puede leer un renglón entero sin
+ * arrastrarlo dos veces, ni comparar dos viajes. Aquí cada viaje es una
+ * tarjeta y las columnas se vuelven renglones.
+ *
+ * El orden de la resta se conserva: Venta, Costos, Utilidad, uno al lado del
+ * otro. Es lo que deja comprobar el viaje de memoria, y era la razón de que
+ * en la retícula fueran esas tres y en ese orden.
+ */
+function ListaMovil({ rutas }: { rutas: FilaRuta[] }) {
+  return (
+    <div className="space-y-2.5 md:hidden">
+      {rutas.map((r) => {
+        const utilidad = Number(r.utilidad);
+        const costos = Number(r.ingreso) - utilidad;
+        const m = r.margen_pct != null ? Number(r.margen_pct) : null;
+        const extra = r.destinos.length - 1;
+        const porCobrar = Number(r.porCobrar ?? 0);
+        // Con quién y en qué fue. Se cuela el kilometraje porque en la
+        // retícula tiene columna propia y aquí no le queda una.
+        const meta = [
+          r.clientes[0] ?? null,
+          r.chofer ?? 'sin chofer',
+          r.vehiculo ?? 'sin unidad',
+          r.km_total ? `${Number(r.km_total).toLocaleString('es-MX')} km` : null,
+        ].filter(Boolean).join(' · ');
+
+        return (
+          <Link key={r.ruta_id} href={`/rutas/${r.ruta_id}`}
+            className="tarjeta-tabla block px-4 py-3.5 transition active:border-white/20">
+            <div className="flex items-center gap-2">
+              <span aria-hidden className={`h-2 w-2 shrink-0 rounded-full ${PUNTO[r.estado]}`} />
+              <span className="cifra text-xs font-medium">#{r.folio}</span>
+              <span className="min-w-0 flex-1 truncate text-xs text-ink-mute">
+                {fechaCorta(r.fecha)} · {r.estado.replace('_', ' ')}
+              </span>
+              <span className={`cifra shrink-0 text-xs font-medium ${m == null ? 'text-ink-mute'
+                : m < 0 ? 'text-bad' : m < 15 ? 'text-warn' : 'text-good'}`}>
+                {m != null ? `${m.toFixed(0)}%` : '—'}
+              </span>
+            </div>
+
+            <p className="mt-2 truncate text-[15px] font-medium leading-tight">
+              {r.destinos[0] ?? '—'}
+            </p>
+            {extra > 0 && (
+              <p className="mt-0.5 text-xs leading-tight text-ink-mute">
+                y {extra} misi{extra > 1 ? 'ones' : 'ón'} más
+              </p>
+            )}
+            <p className="mt-1 truncate text-xs leading-tight text-ink-mute">{meta}</p>
+
+            <div className="mt-3 grid grid-cols-3 gap-2 border-t border-white/[0.06] pt-2.5">
+              <Cifra etiqueta="Venta" valor={mxn(Number(r.ingreso))} />
+              <Cifra etiqueta="Costos" valor={costos ? `−${mxn(costos)}` : mxn(0)} atenuada />
+              <Cifra etiqueta="Utilidad" valor={mxn(utilidad)} tono={utilidad < 0 ? 'malo' : undefined} />
+            </div>
+            {/* Solo lo que falta. Si ya entró completo, repetir la venta no
+                agrega nada. */}
+            {porCobrar > 0 && (
+              <p className="cifra mt-2 text-[11px] text-warn">{mxn(porCobrar)} por cobrar</p>
+            )}
+          </Link>
+        );
+      })}
+    </div>
+  );
+}
+
+/** Una cifra de la tarjeta: el nombre encima, chico, y el número debajo. */
+function Cifra({ etiqueta, valor, tono, atenuada }: {
+  etiqueta: string; valor: string; tono?: 'malo'; atenuada?: boolean;
+}) {
+  return (
+    <div className="min-w-0">
+      <p className="text-[10px] uppercase tracking-[0.08em] text-ink-mute">{etiqueta}</p>
+      <p className={`cifra mt-0.5 truncate text-[13px] font-medium ${
+        tono === 'malo' ? 'text-bad' : atenuada ? 'text-ink-mute' : 'text-ink'}`}>
+        {valor}
+      </p>
+    </div>
+  );
+}
+
+function TablaEscritorio({ rutas, router }: {
+  rutas: FilaRuta[]; router: ReturnType<typeof useRouter>;
+}) {
+  return (
+    <section className="tarjeta-tabla hidden md:block">
       <div className="overflow-x-auto">
         <table className="w-full min-w-[62rem] text-sm">
           <thead>
@@ -322,7 +429,7 @@ function Tabla({ rutas }: { rutas: FilaRuta[] }) {
                     <p className="truncate font-medium leading-tight">{r.destinos[0] ?? '—'}</p>
                     {extra > 0 && (
                       <p className="mt-0.5 truncate text-xs leading-tight text-ink-mute">
-                        y {extra} parada{extra > 1 ? 's' : ''} más
+                        y {extra} misi{extra > 1 ? 'ones' : 'ón'} más
                       </p>
                     )}
                   </td>
@@ -405,9 +512,14 @@ function Resumen({ etiqueta, valor, tono }: {
   const color = tono === 'malo' ? 'text-bad' : tono === 'aviso' ? 'text-warn'
     : tono === 'bueno' ? 'text-good' : 'text-ink';
   return (
-    <span className="flex items-baseline gap-2">
-      <span className="text-[11px] uppercase tracking-[0.08em] text-ink-mute">{etiqueta}</span>
-      <span className={`cifra font-medium ${color}`}>{valor}</span>
+    /* Apilado en el teléfono, al hilo en cuanto hay ancho. Al hilo en 390 px,
+       el nombre y su cifra se separaban tanto que dejaban de leerse como un
+       par. */
+    <span className="flex min-w-0 flex-col sm:flex-row sm:items-baseline sm:gap-2">
+      <span className="truncate text-[10px] uppercase tracking-[0.08em] text-ink-mute sm:text-[11px]">
+        {etiqueta}
+      </span>
+      <span className={`cifra truncate text-[13px] font-medium sm:text-sm ${color}`}>{valor}</span>
     </span>
   );
 }
@@ -463,7 +575,7 @@ function Board({ rutas }: { rutas: FilaRuta[] }) {
                     </p>
                     <div className="mt-2 flex items-center justify-between text-xs">
                       <span className="text-ink-mute">
-                        {r.num_envios} {r.num_envios === 1 ? 'parada' : 'paradas'}
+                        {r.num_envios} {r.num_envios === 1 ? 'misión' : 'misiones'}
                       </span>
                       <span className={m == null ? 'text-ink-mute'
                         : m < 0 ? 'text-bad' : m < 15 ? 'text-warn' : 'text-good'}>

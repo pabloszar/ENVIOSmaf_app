@@ -78,8 +78,15 @@ export interface Ruta {
   vehiculo_id: string | null;
   km_total: number | null;
   km_osrm: number | null;
+  /**
+   * El kilometraje se escribió a mano: recalcular el recorrido no lo pisa.
+   * Opcional porque llega con fase7 y antes de correrla la columna no viene.
+   */
+  km_manual?: boolean;
   roundtrip: boolean;
   orden_optimo: string[] | null;
+  /** La línea que dibujó OSRM, guardada para no volver a pedirla (fase7). */
+  trayecto?: { linea: [number, number][]; minutos: number; roundtrip: boolean } | null;
   config_snapshot: ConfigNegocio | null;
   cerrada_en: string | null;
   notas: string | null;
@@ -113,6 +120,10 @@ export interface Envio {
   uso_cotizador: boolean;
   calificacion: number | null;
   a_credito: boolean;
+  /** Sus `cobros` describen exactamente lo que entró; ya no se supone nada. */
+  cobro_detallado: boolean;
+  cobrado_por: string | null;
+  cobrado_por_otro: string | null;
   notas: string | null;
 }
 
@@ -128,6 +139,11 @@ export interface Gasto {
   descripcion: string | null;
   metodo_pago: string | null;
   comprobante_url: string | null;
+  subcategoria_id: string | null;
+  /** El comentario largo. `descripcion` es la etiqueta corta del renglón. */
+  notas: string | null;
+  pagado_por: string | null;
+  pagado_por_otro: string | null;
 }
 
 export interface Comision {
@@ -149,7 +165,57 @@ export interface Cobro {
   fecha: string;
   monto: number;
   metodo: string | null;
+  recibido_por: string | null;
+  recibido_por_otro: string | null;
   notas: string | null;
+}
+
+export interface SubcategoriaGasto {
+  id: string;
+  categoria: CategoriaGasto;
+  nombre: string;
+  activa: boolean;
+  orden: number;
+}
+
+export interface Adjunto {
+  id: string;
+  gasto_id: string | null;
+  envio_id: string | null;
+  ruta_id: string | null;
+  ruta_archivo: string;
+  nombre: string;
+  tipo_mime: string | null;
+  bytes: number | null;
+  comentario: string | null;
+  creado_en: string;
+}
+
+/** Fila de la vista v_envio_cobro (fase6). */
+export interface EnvioCobro {
+  envio_id: string;
+  ruta_id: string;
+  fecha: string;
+  estado: EstadoRuta;
+  destino: string;
+  cliente_id: string | null;
+  a_credito: boolean;
+  cobro_detallado: boolean;
+  venta: number;
+  cobros_registrados: number;
+  efectivo: number;
+  transferencia: number;
+  tienda: number;
+  cobrado: number;
+  /** Se dio por cobrado sin desglose: sigue siendo una suposición. */
+  cobrado_supuesto: boolean;
+}
+
+/** Fila de la vista v_cuenta_tienda (fase6). */
+export interface CuentaTienda {
+  cobrado: number;
+  aplicado: number;
+  saldo: number;
 }
 
 /** Fila de la vista v_pnl_mensual */

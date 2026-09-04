@@ -12,7 +12,23 @@
 
 import type { ParamsPricing, TamanoCarga } from '@/types';
 
-export const ORIGEN = { lat: 19.289, lng: -99.51, nombre: 'Mueblería MAF – Lerma' };
+/**
+ * De dónde sale toda camioneta.
+ *
+ * Coordenadas medidas en el punto, no geocodificadas: Nominatim solo conoce el
+ * eje de la calle y dejaba la bodega a un kilómetro de donde está. Un
+ * geocodificador acierta la calle y adivina el número.
+ *
+ * Mover este punto mueve los kilómetros de todo destino y, con ellos, los
+ * precios. Por eso `verificarParidad()` ya no parte de coordenadas.
+ */
+export const ORIGEN = {
+  // 19°16'23.2"N 99°30'47.4"W
+  lat: 19.2731111,
+  lng: -99.5131667,
+  nombre: 'Mueblería MAF – Lerma',
+  direccion: 'C. Benito Juárez 9, San Pedro Tultepec, 52030, Edo. de México',
+};
 
 export const PARAMS_DEFAULT: ParamsPricing = {
   margen: 0.5,
@@ -95,7 +111,23 @@ export function calcPrecio(
   tamano: TamanoCarga,
   p: ParamsPricing = PARAMS_DEFAULT
 ): Cotizacion {
-  const km = kmCarretera(lat, lng, p);
+  return precioDesdeKm(kmCarretera(lat, lng, p), tamano, p);
+}
+
+/**
+ * El algoritmo propiamente dicho: de kilómetros a precio.
+ *
+ * Va separado de `calcPrecio` porque ubicar el destino y ponerle precio son
+ * dos cosas distintas, y solo la segunda es la que se calibró. Así la prueba
+ * de paridad puede verificar el algoritmo sin depender de dónde esté la
+ * bodega: si mañana la tienda se muda, los precios de referencia siguen
+ * siendo válidos.
+ */
+export function precioDesdeKm(
+  km: number,
+  tamano: TamanoCarga,
+  p: ParamsPricing = PARAMS_DEFAULT
+): Cotizacion {
   const { costoBase, viaticos, costoTotal, banda } = calcCosto(km, p);
   const mult = p.mult[tamano] ?? 1.0;
   const precioBase = costoTotal / (1 - p.margen);
@@ -130,15 +162,20 @@ export const ETIQUETAS_BANDA: Record<1 | 2 | 3, string> = {
 };
 
 /**
- * Ciudades de referencia con el precio que daba el cotizador original.
- * Sirven de prueba de regresión: si alguien toca el algoritmo y estos
- * números cambian, algo se rompió.
+ * Ciudades de referencia con el precio que daba el cotizador original, y los
+ * kilómetros con que lo daba. Prueba de regresión: si alguien toca el
+ * algoritmo y estos números cambian, algo se rompió.
+ *
+ * Se fijan por kilómetros y no por coordenadas a propósito. Con coordenadas,
+ * corregir la dirección de la bodega —cosa que pasó— movía los km y hacía
+ * fallar la prueba sin que nadie hubiera tocado el algoritmo: una alarma que
+ * suena cuando no hay incendio deja de servir de alarma.
  */
 export const CIUDADES_REFERENCIA = [
-  { nombre: 'Toluca', lat: 19.2926, lng: -99.6568, precioEsperado: 1200 },
-  { nombre: 'CDMX', lat: 19.4326, lng: -99.1332, precioEsperado: 2400 },
-  { nombre: 'Puebla', lat: 19.0414, lng: -98.2063, precioEsperado: 7600 },
-  { nombre: 'Monterrey', lat: 25.6866, lng: -100.3161, precioEsperado: 25700 },
+  { nombre: 'Toluca', km: 24, precioEsperado: 1200 },
+  { nombre: 'CDMX', km: 66, precioEsperado: 2400 },
+  { nombre: 'Puebla', km: 216, precioEsperado: 7600 },
+  { nombre: 'Monterrey', km: 1110, precioEsperado: 25700 },
 ];
 
 export function verificarParidad(p: ParamsPricing = PARAMS_DEFAULT): {
@@ -147,7 +184,7 @@ export function verificarParidad(p: ParamsPricing = PARAMS_DEFAULT): {
 } {
   const fallas: string[] = [];
   for (const c of CIUDADES_REFERENCIA) {
-    const precio = calcPrecio(c.lat, c.lng, 'Mediano', p).precioFinal;
+    const precio = precioDesdeKm(c.km, 'Mediano', p).precioFinal;
     if (precio !== c.precioEsperado) {
       fallas.push(`${c.nombre}: esperado $${c.precioEsperado}, obtenido $${precio}`);
     }

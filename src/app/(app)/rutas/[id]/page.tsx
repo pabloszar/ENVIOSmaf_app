@@ -5,7 +5,19 @@ import { calcularComisiones } from '@/lib/negocio';
 import Detalle from './Detalle';
 import type {
   Ruta, Envio, Gasto, Tripulante, Comision, Vehiculo, Contacto, RutaPnl,
+  Cobro, SubcategoriaGasto,
 } from '@/types';
+
+/**
+ * Lo que trae una migración que quizá todavía no se ha corrido. La pantalla
+ * abre igual y el dato simplemente no aparece, en vez de tronar entera.
+ */
+async function opcional<T>(p: PromiseLike<{ data: T | null; error: unknown }>): Promise<T | null> {
+  try {
+    const { data, error } = await p;
+    return error ? null : data;
+  } catch { return null; }
+}
 
 export const dynamic = 'force-dynamic';
 
@@ -25,17 +37,41 @@ export default async function Page({ params }: { params: { id: string } }) {
     sb.from('v_ruta_pnl_full').select('*').eq('ruta_id', params.id).maybeSingle(),
   ]);
 
-  // Cuánto de lo vendido en esta ruta ya entró (fase4.sql). Si falta correrla,
-  // la pantalla abre igual y el dato simplemente no aparece.
-  const cobro = await (async () => {
-    try {
-      const { data, error } = await sb
-        .from('v_ruta_cobro').select('*').eq('ruta_id', params.id).maybeSingle();
-      return error ? null : data;
-    } catch { return null; }
-  })();
-
   if (!ruta.data) notFound();
+
+  const idsEnvio = (envios.data ?? []).map((e) => e.id);
+  const idsGasto = (gastos.data ?? []).map((g) => g.id);
+
+  const [cobro, cobros, subcats, adjEnvio, adjGasto] = await Promise.all([
+    // Cuánto de lo vendido en esta ruta ya entró (fase4).
+    opcional<{ por_cobrar: number }>(
+      sb.from('v_ruta_cobro').select('*').eq('ruta_id', params.id).maybeSingle()),
+    // El desglose de cómo se pagó cada misión (fase6).
+    idsEnvio.length
+      ? opcional<Cobro[]>(sb.from('cobros').select('*').in('envio_id', idsEnvio))
+      : Promise.resolve([] as Cobro[]),
+    opcional<SubcategoriaGasto[]>(sb.from('subcategorias_gasto').select('*').eq('activa', true)
+      .order('categoria').order('orden').order('nombre')),
+    // Solo el conteo de evidencias: la lista se pide al abrir cada renglón,
+    // que es cuando de verdad se necesita.
+    idsEnvio.length
+      ? opcional<{ envio_id: string }[]>(
+          sb.from('adjuntos').select('envio_id').in('envio_id', idsEnvio))
+      : Promise.resolve([]),
+    idsGasto.length
+      ? opcional<{ gasto_id: string }[]>(
+          sb.from('adjuntos').select('gasto_id').in('gasto_id', idsGasto))
+      : Promise.resolve([]),
+  ]);
+
+  const contar = (filas: Record<string, string>[] | null, campo: string) => {
+    const n: Record<string, number> = {};
+    for (const f of filas ?? []) {
+      const k = f[campo];
+      if (k) n[k] = (n[k] ?? 0) + 1;
+    }
+    return n;
+  };
 
   const contactos = (cont.data ?? []) as Contacto[];
   const activos = contactos.filter((c) => c.activo);
@@ -70,6 +106,11 @@ export default async function Page({ params }: { params: { id: string } }) {
       }}
       pnl={(pnl.data ?? null) as RutaPnl | null}
       porCobrar={cobro ? Number(cobro.por_cobrar) : null}
+      cobros={(cobros ?? []) as Cobro[]}
+      subcategorias={(subcats ?? []) as SubcategoriaGasto[]}
+      evidenciasEnvio={contar(adjEnvio, 'envio_id')}
+      evidenciasGasto={contar(adjGasto, 'gasto_id')}
+      fase6={subcats != null}
       comisionesEstimadas={comisionesEstimadas}
       vehiculos={(veh.data ?? []) as Vehiculo[]}
       choferes={activos.filter((c) => c.roles?.includes('chofer'))}

@@ -1,11 +1,25 @@
-import Proximamente from '@/components/Proximamente';
+import { db } from '@/lib/db';
+import { configVigente } from '@/lib/config';
+import Cotizador from './Cotizador';
+import type { Contacto, Vehiculo } from '@/types';
 
-export default function Page() {
+export const dynamic = 'force-dynamic';
+
+export default async function Page() {
+  const [cfg, veh, cont] = await Promise.all([
+    configVigente(),
+    db().from('vehiculos').select('*').eq('activo', true).order('nombre'),
+    db().from('contactos').select('*').eq('activo', true).order('nombre'),
+  ]);
+
+  const contactos = (cont.data ?? []) as Contacto[];
   return (
-    <Proximamente
-      titulo="Cotizador"
-      fase="Fase 4 — en construcción"
-      descripcion="Mapa con búsqueda de destino y los dos precios lado a lado: el del algoritmo calibrado por bandas de km y el precio mínimo según tu modelo de porcentajes. Con botón para convertir la cotización en una ruta agendada. La lógica de ambos motores ya está lista en el código."
+    <Cotizador
+      cfg={cfg}
+      vehiculos={(veh.data ?? []) as Vehiculo[]}
+      clientes={contactos.filter((c) =>
+        c.roles?.includes('cliente_b2b') || c.roles?.includes('cliente_b2c'))}
+      vendedores={contactos.filter((c) => c.roles?.includes('vendedor'))}
     />
   );
 }

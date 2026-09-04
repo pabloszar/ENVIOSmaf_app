@@ -2,6 +2,36 @@
 @tailwind components;
 @tailwind utilities;
 
+/*
+ * Las dos manchas de color del fondo, en una variable porque las usan dos
+ * sitios: el `body` y la viñeta con la que el mapa se funde con él. Definidas
+ * dos veces, la primera que alguien retocara dejaría un borde visible
+ * alrededor del mapa sin que se entendiera de dónde salió.
+ */
+:root {
+  --manchas-de-fondo:
+    radial-gradient(60rem 40rem at 12% -10%, rgba(20, 160, 143, 0.10), transparent 60%),
+    radial-gradient(50rem 34rem at 95% 8%, rgba(215, 240, 0, 0.045), transparent 55%);
+
+  /*
+   * El hueco de la barra del pie, que solo existe en el teléfono.
+   *
+   * La barra va fija y flotando, así que sin apartarle sitio taparía el final
+   * de cada página —y en el mapa, la hoja de abajo—. Va en una variable
+   * porque la leen dos: el cascarón, que aparta el hueco, y la barra, que lo
+   * llena. Con dos números sueltos, el día que uno cambie el otro no se
+   * entera y algo queda debajo.
+   *
+   * `env(safe-area-inset-bottom)` es la franja del gesto de inicio en los
+   * teléfonos sin botón. Sin ella, los iconos caen justo donde el sistema se
+   * queda los toques.
+   */
+  --barra-movil: 0px;
+}
+@media (max-width: 767px) {
+  :root { --barra-movil: calc(3.875rem + env(safe-area-inset-bottom)); }
+}
+
 @layer base {
   html {
     -webkit-font-smoothing: antialiased;
@@ -15,9 +45,7 @@
   body {
     @apply bg-surface-sunk text-ink;
     font-variant-numeric: tabular-nums;
-    background-image:
-      radial-gradient(60rem 40rem at 12% -10%, rgba(20, 160, 143, 0.10), transparent 60%),
-      radial-gradient(50rem 34rem at 95% 8%, rgba(215, 240, 0, 0.045), transparent 55%);
+    background-image: var(--manchas-de-fondo);
     background-attachment: fixed;
   }
   /* Los montos se leen en columna: que los dígitos no bailen. */
@@ -77,4 +105,325 @@
   .fila {
     @apply border-t border-surface-line transition hover:bg-surface-raised;
   }
+
+  .cascaron { padding-bottom: var(--barra-movil); }
+
+  /*
+   * Pantalla completa. Normalmente el cascarón crece con el contenido; cuando
+   * la página de adentro lo pide, se vuelve una columna del alto de la ventana
+   * y el lienzo ocupa lo que sobra sin margen ni padding. Así el mapa llega a
+   * los bordes y el scroll queda dentro de los paneles, no en la página.
+   *
+   * El alto es el de la ventana MENOS la barra del pie, que el padding de
+   * arriba descuenta por dentro: si no, el mapa mediría la pantalla entera y
+   * la hoja de abajo nacería tapada.
+   */
+  .cascaron:has([data-pantalla-completa]) {
+    @apply flex h-dvh flex-col overflow-hidden;
+  }
+  .lienzo:has(> [data-pantalla-completa]) {
+    @apply mx-0 min-h-0 max-w-none flex-1 p-0;
+  }
+
+  /*
+   * Vidrio. Un panel que flota sobre el mapa sin taparlo: el desenfoque deja
+   * ver que hay algo debajo y el filo claro de arriba es lo que lo hace leer
+   * como una lámina y no como un rectángulo pegado.
+   */
+  .vidrio {
+    @apply rounded-2xl border border-white/[0.11] bg-surface/45 backdrop-blur-2xl backdrop-saturate-150;
+    box-shadow:
+      0 12px 44px rgba(0, 0, 0, 0.6),
+      inset 0 1px 0 rgba(255, 255, 255, 0.1);
+  }
+  /*
+   * Lámina. Lo mismo que el vidrio pero sin desenfoque: es para las tarjetas
+   * que NO van encima del mapa. Difuminar un fondo liso no se ve y cuesta GPU
+   * en cada scroll de la lista que lleva dentro.
+   *
+   * Hay dos alturas y no una porque, con todo del mismo tono, la pantalla se
+   * leía como una cuadrícula de rectángulos iguales. La columna de la
+   * izquierda —de qué ruta hablamos y qué dejó— va levantada; la banda de
+   * abajo —lo que costó y cómo se cobró— va hundida, medio paso por detrás.
+   * Es la misma jerarquía por elevación que usa el resto de la app.
+   */
+  .lamina {
+    @apply rounded-2xl border border-white/[0.09] bg-surface/75;
+    box-shadow:
+      0 10px 30px rgba(0, 0, 0, 0.45),
+      inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  }
+  .lamina-honda {
+    @apply rounded-2xl border border-white/[0.05] bg-surface-sunk/80;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03);
+  }
+
+  /*
+   * El fondo de una ruta sin ubicaciones, donde iría el mapa.
+   *
+   * Curvas de nivel: dos juegos de anillos concéntricos desfasados sobre el
+   * mismo degradado que usa el mapa mientras carga, para que las dos pantallas
+   * —con recorrido y sin él— se sientan la misma. Alude a un terreno sin
+   * afirmar ninguno; dibujar geografía de verdad sería inventar dónde ocurrió
+   * el viaje.
+   */
+  .lienzo-topo {
+    @apply relative isolate;
+  }
+  /*
+   * El terreno va en un pseudo-elemento y no en el fondo del contenedor porque
+   * lleva máscara: si la máscara cubriera el elemento entero se desvanecería
+   * también la cadena del viaje, que es lo único que hay que leer.
+   *
+   * Se desvanece por las orillas igual que el mapa, para que las dos rutas
+   * —con recorrido y sin él— terminen del mismo modo: donde se acaba la
+   * información, no donde se acaba una caja.
+   */
+  .lienzo-topo::before {
+    content: '';
+    @apply absolute inset-0 -z-10;
+    background-image:
+      repeating-radial-gradient(circle at 28% 18%,
+        transparent 0 44px, rgba(255, 255, 255, 0.026) 44px 45px),
+      repeating-radial-gradient(circle at 76% 74%,
+        transparent 0 58px, rgba(255, 255, 255, 0.02) 58px 59px),
+      radial-gradient(120% 90% at 50% 0%, #16161a 0%, #101014 45%, #08080a 100%);
+    -webkit-mask-image:
+      linear-gradient(to top, transparent 0%, #000 14%),
+      linear-gradient(to bottom, transparent 0%, #000 14%),
+      linear-gradient(to left, transparent 0%, #000 9%),
+      linear-gradient(to right, transparent 0%, #000 9%);
+    -webkit-mask-composite: source-in;
+    mask-image:
+      linear-gradient(to top, transparent 0%, #000 14%),
+      linear-gradient(to bottom, transparent 0%, #000 14%),
+      linear-gradient(to left, transparent 0%, #000 9%),
+      linear-gradient(to right, transparent 0%, #000 9%);
+    mask-composite: intersect;
+  }
+
+  /* La versión chica: pastillas y botones sueltos sobre el mapa. */
+  .vidrio-pastilla {
+    @apply rounded-full border border-white/[0.11] bg-surface/45 backdrop-blur-xl backdrop-saturate-150;
+    box-shadow:
+      0 6px 20px rgba(0, 0, 0, 0.5),
+      inset 0 1px 0 rgba(255, 255, 255, 0.07);
+  }
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   Mapa
+   ══════════════════════════════════════════════════════════════════════════ */
+
+/*
+ * El fondo que se ve mientras las teselas cargan.
+ *
+ * Leaflet trae `background: #ddd` en su propio CSS y gana por orden de carga,
+ * así que al desplazarse rápido aparecían cuadros claros hasta que llegaba la
+ * imagen: sobre una interfaz oscura, un parpadeo blanco a pantalla completa.
+ * Va con `!important` porque es una corrección a una hoja de terceros que se
+ * inyecta después de esta.
+ *
+ * No es un negro plano sino un degradado: un hueco liso se lee como un error
+ * de carga, y una superficie con volumen se lee como parte del diseño.
+ */
+.leaflet-container {
+  background:
+    radial-gradient(120% 90% at 50% 0%, #16161a 0%, #101014 45%, #08080a 100%) !important;
+  font-family: inherit;
+}
+
+/*
+ * Las teselas de OpenStreetMap son claras y encima de una interfaz oscura
+ * deslumbran. Se invierten y se rotan 180° de tono: el resultado es un mapa
+ * oscuro donde el agua sigue viéndose azul y el verde sigue siendo verde, sin
+ * depender de un servidor de teselas ajeno con sus propios términos.
+ */
+.mapa-teselas {
+  filter: invert(1) hue-rotate(180deg) brightness(0.92) contrast(0.92) saturate(0.8);
+}
+
+/*
+ * Aparecer, no encender. Leaflet ya sube la opacidad al cargar cada tesela;
+ * alargar un poco esa transición convierte el mosaico que se arma a saltos en
+ * algo que se revela, y de paso disimula las que llegan tarde.
+ */
+.leaflet-tile {
+  transition: opacity 260ms ease-out;
+}
+
+/*
+ * El mapa sin marco.
+ *
+ * En el detalle de una ruta el mapa comparte pantalla con las tarjetas de
+ * datos, y encerrarlo en un rectángulo con borde lo convertía en una lámina
+ * más entre otras. Aquí se desvanece por las orillas y se funde con el fondo
+ * de la página: el recorrido termina donde deja de haber información, no
+ * donde termina una caja.
+ *
+ * Es una viñeta encima y no una máscara. Enmascarar el plano de teselas borra
+ * el mapa entero: los planos de Leaflet no tienen tamaño propio —son cajas de
+ * cero por cero cuyo contenido se desborda— y un degradado en porcentajes
+ * sobre una caja de cero píxeles cubre todo. Y enmascarar el contenedor se
+ * llevaría por delante los créditos de OpenStreetMap, que son obligatorios.
+ *
+ * El z-index de 500 la deja encima de los planos del mapa —que viven en 400—
+ * y debajo de los controles y los créditos, que viven en 1000.
+ */
+.mapa-difuminado .leaflet-container {
+  background: transparent !important;
+}
+.mapa-difuminado::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 500;
+  pointer-events: none;
+
+  /*
+   * La viñeta pinta EL FONDO DE LA PÁGINA, no un negro cualquiera.
+   *
+   * Aquí estaba el borde que se veía arriba: el fondo de la app no es negro
+   * plano, lleva dos manchas de color tenues ancladas a la ventana, y son más
+   * fuertes justo en la franja de arriba. Una viñeta de negro liso se
+   * despedía del mapa en un color que no era el de atrás, y el corte volvía a
+   * aparecer donde más se notaba.
+   *
+   * `fixed` es lo que lo hace encajar: ancla las manchas a la ventana igual
+   * que el `body`, así que la viñeta cae exactamente sobre el mismo color que
+   * tiene detrás, píxel por píxel.
+   */
+  background-color: theme('colors.surface.sunk');
+  background-image: var(--manchas-de-fondo);
+  background-attachment: fixed;
+
+  /* Y se recorta a las orillas. Cuatro degradados, uno por lado: con uno
+     radial solo se difuminaban las esquinas. */
+  -webkit-mask-image:
+    linear-gradient(to bottom, #000 0%, transparent 14%),
+    linear-gradient(to top, #000 0%, transparent 14%),
+    linear-gradient(to right, #000 0%, transparent 9%),
+    linear-gradient(to left, #000 0%, transparent 9%);
+  mask-image:
+    linear-gradient(to bottom, #000 0%, transparent 14%),
+    linear-gradient(to top, #000 0%, transparent 14%),
+    linear-gradient(to right, #000 0%, transparent 9%),
+    linear-gradient(to left, #000 0%, transparent 9%);
+}
+
+/*
+ * El globo sube por encima de los paneles.
+ *
+ * Leaflet lo deja en 700 y los paneles que flotan sobre el mapa viven en 900,
+ * así que el globo salía con la cabecera cortada por debajo de la pastilla del
+ * viaje —justo el renglón que dice de qué misión es—. En 950 pasa por delante
+ * de los paneles y sigue por debajo de los controles de zoom (1000) y de las
+ * ventanas (1200).
+ */
+.leaflet-popup-pane { z-index: 950; }
+
+/*
+ * El globo de un pin.
+ *
+ * Leaflet lo trae blanco, con pico y sombra de sistema. Aquí es el vidrio más
+ * marcado de la app —más transparente y más desenfocado que un panel— y es a
+ * propósito: es lo único que se abre en medio del mapa, y si tapara de plano
+ * lo que hay debajo taparía justo el recorrido que se fue a ver. Se ve que
+ * hay mapa atrás, sin que el mapa estorbe la lectura.
+ *
+ * El contenido lo pinta React por portal, así que aquí solo va la caja: los
+ * márgenes y los separadores los pone el componente, que es quien sabe dónde
+ * empieza cada sección.
+ */
+.leaflet-popup-content-wrapper {
+  border-radius: 18px !important;
+  border: 1px solid rgba(255, 255, 255, 0.13);
+  background: rgba(18, 18, 21, 0.58) !important;
+  -webkit-backdrop-filter: blur(30px) saturate(1.7);
+  backdrop-filter: blur(30px) saturate(1.7);
+  box-shadow:
+    0 24px 64px rgba(0, 0, 0, 0.66),
+    inset 0 1px 0 rgba(255, 255, 255, 0.12) !important;
+  color: theme('colors.ink.DEFAULT') !important;
+}
+.leaflet-popup-content {
+  margin: 10px 13px;
+  line-height: 1.35 !important;
+}
+/* El globo de una misión trae su propio relleno por secciones. */
+.leaflet-popup.globo .leaflet-popup-content {
+  margin: 0 !important;
+}
+/*
+ * El pico. Va sin borde y sin desenfoque propio: son 17 px girados 45°, y una
+ * segunda capa de desenfoque ahí solo se nota como un parche más claro justo
+ * donde se une con el globo.
+ */
+.leaflet-popup-tip {
+  background: rgba(24, 24, 28, 0.86) !important;
+  border: none !important;
+  box-shadow: none !important;
+}
+
+/* Los créditos son obligatorios; que no compitan con el mapa. */
+.leaflet-control-attribution {
+  background: rgba(0, 0, 0, 0.5) !important;
+  color: theme('colors.ink.mute') !important;
+  font-size: 10px !important;
+  backdrop-filter: blur(8px);
+}
+.leaflet-control-attribution a { color: theme('colors.ink.soft') !important; }
+
+/* Los controles de zoom, como el resto de lo que flota sobre el mapa. */
+.leaflet-bar {
+  border: none !important;
+  box-shadow: none !important;
+}
+.leaflet-bar a,
+.leaflet-bar a:hover {
+  width: 34px !important;
+  height: 34px !important;
+  line-height: 34px !important;
+  color: theme('colors.ink.soft') !important;
+  background: rgba(20, 20, 22, 0.6) !important;
+  border: 1px solid rgba(255, 255, 255, 0.09) !important;
+  backdrop-filter: blur(16px);
+}
+.leaflet-bar a:first-child { border-radius: 12px 12px 0 0 !important; }
+.leaflet-bar a:last-child { border-radius: 0 0 12px 12px !important; border-top: none !important; }
+.leaflet-bar a:hover { color: theme('colors.ink.DEFAULT') !important; }
+
+/*
+ * En un teléfono los botones de zoom sobran —ahí se hace pinza— y chocan
+ * contra la hoja de abajo. Solo se esconden en el mapa a pantalla completa:
+ * en los mapas embebidos, dentro de una ventana que no admite gestos, hacen
+ * falta.
+ */
+@media (max-width: 767px) {
+  [data-pantalla-completa] .leaflet-control-zoom { display: none; }
+}
+
+/* La bodega. Va sin número porque no es una parada: es de donde se sale. */
+.pin-origen {
+  display: flex; align-items: center; justify-content: center;
+  width: 30px; height: 30px; border-radius: 9999px;
+  background: theme('colors.surface.DEFAULT');
+  border: 2px solid theme('colors.acento.DEFAULT');
+  font-size: 14px; line-height: 1;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.5);
+}
+
+/* Cada parada, con su número de visita. */
+.pin-parada {
+  display: flex; align-items: center; justify-content: center;
+  width: 26px; height: 26px; border-radius: 9999px;
+  background: theme('colors.brand.DEFAULT');
+  color: theme('colors.surface.sunk');
+  border: 2px solid rgba(255, 255, 255, 0.85);
+  font-size: 12px; font-weight: 600; line-height: 1;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.5);
+}
+.pin-atenuado {
+  background: theme('colors.ink.mute');
+  opacity: 0.75;
 }

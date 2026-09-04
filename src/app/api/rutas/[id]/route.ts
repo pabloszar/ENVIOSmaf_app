@@ -1,6 +1,7 @@
 import { db } from '@/lib/db';
 import { conManejo, limpiarNumericos, soloCampos } from '@/lib/api';
 import { cerrarRuta, reabrirRuta } from '@/lib/cerrar';
+import { borrarEvidencias } from '@/lib/evidencias';
 
 export const dynamic = 'force-dynamic';
 
@@ -53,6 +54,11 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
     const cuerpo = limpiarNumericos(await req.json(), NUM);
     const fila = soloCampos(cuerpo, CAMPOS);
     const sb = db();
+
+    // Escribir el kilometraje a mano lo declara definitivo: recalcular el
+    // recorrido más tarde ya no lo pisa. Se deduce del propio cambio en vez de
+    // pedir un interruptor aparte, porque corregir el número ES la decisión.
+    if ('km_total' in fila) fila.km_manual = fila.km_total != null;
 
     // Se lee el estado anterior junto con la fecha: los dos se necesitan antes
     // de tocar nada.
@@ -107,7 +113,11 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
 export async function DELETE(_req: Request, { params }: { params: { id: string } }) {
   return conManejo(async () => {
     // envíos, gastos, tripulación y comisiones caen por ON DELETE CASCADE.
-    const { error } = await db().from('rutas').delete().eq('id', params.id);
+    // Las evidencias van aparte: la cascada se lleva sus filas, pero los
+    // archivos del bucket hay que quitarlos a mano y antes de borrar la ruta.
+    const sb = db();
+    await borrarEvidencias(sb, { ruta_id: params.id });
+    const { error } = await sb.from('rutas').delete().eq('id', params.id);
     if (error) throw new Error(error.message);
     return { eliminada: params.id };
   });

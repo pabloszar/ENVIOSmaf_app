@@ -1,5 +1,6 @@
 import { db } from '@/lib/db';
 import { conManejo, limpiarNumericos, soloCampos } from '@/lib/api';
+import { borrarEvidencias } from '@/lib/evidencias';
 import type { SupabaseClient } from '@supabase/supabase-js';
 
 export const dynamic = 'force-dynamic';
@@ -113,6 +114,7 @@ export async function DELETE(req: Request) {
     const { data: antes } = await sb
       .from('envios').select('ruta_id, distancia_km').eq('id', id).single();
 
+    await borrarEvidencias(sb, { envio_id: id });
     const { error } = await sb.from('envios').delete().eq('id', id);
     if (error) throw new Error(error.message);
 

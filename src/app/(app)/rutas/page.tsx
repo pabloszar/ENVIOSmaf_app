@@ -42,7 +42,7 @@ export default async function Page() {
     (todosContactos ?? []).map((c) => [c.id, c.nombre])
   );
 
-  // Paradas y tripulación agrupadas por ruta.
+  // Misiones y tripulación agrupadas por ruta.
   const paradasPorRuta = new Map<string, { destino: string; cliente_id: string | null }[]>();
   for (const e of envios.data ?? []) {
     const lista = paradasPorRuta.get(e.ruta_id) ?? [];

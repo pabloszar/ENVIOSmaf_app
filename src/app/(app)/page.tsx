@@ -219,7 +219,7 @@ export default async function Rentabilidad({
           <p className="etiqueta">{etiquetaPeriodo(periodo, actual, rango)}</p>
           <h1 className="mt-2 text-4xl font-medium tracking-tight">Rentabilidad</h1>
           <p className="mt-2 text-sm text-ink-mute">
-            {hoy.viajes} viajes · {hoy.paradas} paradas entregadas
+            {hoy.viajes} viajes · {hoy.paradas} misiones entregadas
           </p>
         </div>
         <div className="relative">
@@ -268,9 +268,9 @@ export default async function Rentabilidad({
           detalle={<Comparativo actual={hoy.utilidadNeta} anterior={antes?.utilidadNeta ?? null} />} />
         <Indicador etiqueta="Ticket promedio" valor={mxn(hoy.ticket)}
           detalle={<Comparativo actual={hoy.ticket} anterior={antes?.ticket ?? null} />} />
-        <Indicador etiqueta="Utilidad por parada"
+        <Indicador etiqueta="Utilidad por misión"
           valor={mxn(hoy.paradas > 0 ? hoy.utilidadNeta / hoy.paradas : 0)}
-          detalle={`${hoy.paradas} paradas en el periodo`} />
+          detalle={`${hoy.paradas} misiones en el periodo`} />
       </section>
 
       <Tarjeta titulo="Tendencia" nota={etiquetaPeriodo(periodo, actual, rango)}>
@@ -294,7 +294,7 @@ export default async function Rentabilidad({
       </Tarjeta>
 
       <div className="grid gap-6 lg:grid-cols-2">
-        <Tarjeta titulo="El efecto de agrupar" nota="Por parada entregada">
+        <Tarjeta titulo="El efecto de agrupar" nota="Por misión entregada">
           {agrupadas && sencillas ? (
             <div className="px-6 pb-6">
               <table className="w-full text-sm">
@@ -307,27 +307,27 @@ export default async function Rentabilidad({
                 </thead>
                 <tbody>
                   <FilaAgrupar etiqueta="Viajes" a={sencillas.viajes} b={agrupadas.viajes} tipo="numero" />
-                  <FilaAgrupar etiqueta="Paradas" a={sencillas.paradas} b={agrupadas.paradas} tipo="numero" />
-                  <FilaAgrupar etiqueta="Ingreso por parada" a={sencillas.ingresoPorParada} b={agrupadas.ingresoPorParada} tipo="dinero" />
-                  <FilaAgrupar etiqueta="Gasto de viaje por parada" a={sencillas.gastoPorParada} b={agrupadas.gastoPorParada} tipo="dinero" />
-                  <FilaAgrupar etiqueta="Utilidad por parada" a={sencillas.utilidadPorParada} b={agrupadas.utilidadPorParada} tipo="dinero" />
+                  <FilaAgrupar etiqueta="Misiones" a={sencillas.paradas} b={agrupadas.paradas} tipo="numero" />
+                  <FilaAgrupar etiqueta="Ingreso por misión" a={sencillas.ingresoPorParada} b={agrupadas.ingresoPorParada} tipo="dinero" />
+                  <FilaAgrupar etiqueta="Gasto de viaje por misión" a={sencillas.gastoPorParada} b={agrupadas.gastoPorParada} tipo="dinero" />
+                  <FilaAgrupar etiqueta="Utilidad por misión" a={sencillas.utilidadPorParada} b={agrupadas.utilidadPorParada} tipo="dinero" />
                   <FilaAgrupar etiqueta="Margen" a={sencillas.margen} b={agrupadas.margen} tipo="pct" />
                 </tbody>
               </table>
               <p className="mt-4 text-sm text-ink-soft">
                 {agrupadas.utilidadPorParada > sencillas.utilidadPorParada ? (
                   <>Agrupar deja <strong>{mxn(agrupadas.utilidadPorParada - sencillas.utilidadPorParada)} más
-                  de utilidad por parada</strong>, porque el gasto de viaje por parada baja{' '}
+                  de utilidad por misión</strong>, porque el gasto de viaje por misión baja{' '}
                   {mxn(sencillas.gastoPorParada - agrupadas.gastoPorParada)}.</>
                 ) : (
-                  <>Con estos datos, agrupar todavía no deja más utilidad por parada. Vale la pena
+                  <>Con estos datos, agrupar todavía no deja más utilidad por misión. Vale la pena
                   revisar si las rutas agrupadas están cobrando completo cada entrega.</>
                 )}
               </p>
             </div>
           ) : (
             <p className="px-6 pb-8 text-sm text-ink-mute">
-              Hacen falta viajes de los dos tipos —de una parada y de varias— para poder comparar.
+              Hacen falta viajes de los dos tipos —de una misión y de varias— para poder comparar.
             </p>
           )}
         </Tarjeta>
@@ -369,7 +369,7 @@ export default async function Rentabilidad({
                         </Link>
                         <span className="ml-2 text-xs text-ink-mute">{r.vehiculo ?? 'sin unidad'}</span>
                         {r.num_envios > 1 && (
-                          <span className="ml-2 text-xs text-ink-mute">· {r.num_envios} paradas</span>
+                          <span className="ml-2 text-xs text-ink-mute">· {r.num_envios} misiones</span>
                         )}
                       </td>
                       <td className="py-2 pr-4 text-ink-soft">{r.fecha}</td>

@@ -2,6 +2,9 @@
 
 import { useState } from 'react';
 import { Input } from '@/components/ui';
+import { TIENDAS_MAF, SIN_CUSTODIA, esCaja, type Custodia } from '@/lib/cobro';
+
+export { TIENDAS_MAF, SIN_CUSTODIA, esCaja, type Custodia } from '@/lib/cobro';
 
 /**
  * Quién tuvo el dinero en la mano.
@@ -15,18 +18,6 @@ import { Input } from '@/components/ui';
  * "Tiendas MAF" viene fijo y escrito igual siempre: si cada quien lo teclea a
  * su manera, el saldo se parte en varias personas que son la misma.
  */
-export const TIENDAS_MAF = 'Tiendas MAF';
-
-export interface Custodia {
-  contactoId: string | null;
-  otro: string;
-}
-
-export const SIN_CUSTODIA: Custodia = { contactoId: null, otro: '' };
-
-/** ¿Está en la caja propia? Vacío en los dos campos = sí. */
-export const esCaja = (c: Custodia) => !c.contactoId && !c.otro.trim();
-
 export default function QuienTuvo({
   valor, onCambio, etiqueta, sugeridos = [],
 }: {

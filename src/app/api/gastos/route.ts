@@ -1,5 +1,6 @@
 import { db } from '@/lib/db';
 import { conManejo, limpiarNumericos, soloCampos } from '@/lib/api';
+import { borrarEvidencias } from '@/lib/evidencias';
 
 export const dynamic = 'force-dynamic';
 
@@ -9,6 +10,9 @@ const CAMPOS = [
   'descripcion', 'metodo_pago', 'comprobante_url',
   // Quién puso el dinero. Vacío = la caja de Envíos MAF, que es lo normal.
   'pagado_por', 'pagado_por_otro',
+  // En qué se gastó exactamente, y el comentario largo que acompaña a la
+  // evidencia. `descripcion` sigue siendo la etiqueta corta del renglón.
+  'subcategoria_id', 'notas',
 ];
 
 export async function GET(req: Request) {
@@ -70,7 +74,9 @@ export async function DELETE(req: Request) {
   return conManejo(async () => {
     const { id } = (await req.json()) as { id?: string };
     if (!id) throw new Error('Falta el id.');
-    const { error } = await db().from('gastos').delete().eq('id', id);
+    const sb = db();
+    await borrarEvidencias(sb, { gasto_id: id });
+    const { error } = await sb.from('gastos').delete().eq('id', id);
     if (error) throw new Error(error.message);
     return { eliminado: id };
   });

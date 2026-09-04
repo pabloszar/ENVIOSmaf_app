@@ -4,7 +4,16 @@ import { conManejo, limpiarNumericos, soloCampos } from '@/lib/api';
 export const dynamic = 'force-dynamic';
 
 const CAMPOS = ['fecha', 'monto', 'concepto', 'vehiculo_id', 'metodo', 'referencia', 'notas'];
-const CONCEPTOS = ['entrega', 'mantenimiento', 'legal', 'otro'];
+const CONCEPTOS = ['entrega', 'mantenimiento', 'legal', 'cobrado_en_tienda', 'otro'];
+
+/**
+ * El abono de lo que Tiendas MAF cobró en su caja.
+ *
+ * Ese dinero nunca pasó por Envíos MAF, así que baja el fondo de renta pero
+ * NO la caja. Por eso se distingue por concepto y no es un pago cualquiera:
+ * `v_movimiento_custodia` lo saca del bolsillo de la tienda, no del tuyo.
+ */
+const CONCEPTO_TIENDA = 'cobrado_en_tienda';
 
 /**
  * Salidas del fondo de renta.
@@ -46,6 +55,17 @@ export async function POST(req: Request) {
     // saldo negativo tiene que quedar visible y no como un descuadre mudo.
     const { data: fondo } = await sb.from('v_fondo_renta').select('saldo').maybeSingle();
     const saldo = Number(fondo?.saldo ?? 0);
+
+    // Solo se puede abonar lo que la tienda de verdad cobró. Pasarse dejaría
+    // su cuenta en negativo: estaría pagando renta con dinero que no recibió.
+    if (fila.concepto === CONCEPTO_TIENDA) {
+      const { data: tienda } = await sb.from('v_cuenta_tienda').select('saldo').maybeSingle();
+      const porAbonar = Number(tienda?.saldo ?? 0);
+      if (monto > porAbonar + 0.005) {
+        throw new Error(
+          `Tiendas MAF solo tiene ${porAbonar.toFixed(2)} cobrado sin abonar a la renta.`);
+      }
+    }
 
     const { data, error } = await sb.from('pagos_renta').insert(fila).select().single();
     if (error) throw new Error(error.message);

@@ -17,6 +17,18 @@ const config: Config = {
   content: ['./src/**/*.{ts,tsx}'],
   theme: {
     extend: {
+      /*
+       * Pantallas por ALTO, no por ancho.
+       *
+       * El detalle de una ruta cabe entero en un monitor y no en una laptop
+       * corta. En vez de plegar los paneles siempre —esconder un dato que sí
+       * cabía— o nunca —dejarlo cortado—, la decisión la toma la ventana:
+       * con `alto:` el panel nace abierto, y debajo de eso se recoge y se
+       * abre al acercar el cursor.
+       */
+      screens: {
+        alto: { raw: '(min-height: 760px)' },
+      },
       colors: {
         // Texto. mute cumple 5.4:1 sobre la tarjeta; soft, 7.2:1.
         ink: {

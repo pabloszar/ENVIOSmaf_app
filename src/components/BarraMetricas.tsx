@@ -43,10 +43,14 @@ export default async function BarraMetricas() {
   const color = { ink: 'text-ink', good: 'text-good', warn: 'text-warn', bad: 'text-bad' };
 
   return (
-    <div className="flex flex-wrap items-center gap-2">
+    /* En una pantalla angosta estos cuatro chips se partían en tres renglones
+       y se comían un tercio del alto útil. Se deslizan de lado en vez de
+       envolverse: la barra siempre mide lo mismo. */
+    <div className="-mx-1 flex items-center gap-2 overflow-x-auto px-1
+      [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
       {chips.map((c) => (
         <Link key={c.etiqueta} href={c.href}
-          className="flex items-center gap-2 rounded-full border border-white/[0.07]
+          className="flex shrink-0 items-center gap-2 rounded-full border border-white/[0.07]
             bg-white/[0.035] px-3 py-1.5 text-xs backdrop-blur transition hover:border-white/20">
           <span className="text-ink-mute">{c.etiqueta}</span>
           <span className={`cifra font-medium ${color[c.tono as keyof typeof color]}`}>{c.valor}</span>

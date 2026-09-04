@@ -40,3 +40,16 @@ export function limpiarNumericos<T extends Record<string, unknown>>(
   }
   return out as T;
 }
+
+/**
+ * ¿El error dice que una columna todavía no existe?
+ *
+ * Es lo que responde Postgres —y PostgREST desde su caché de esquema— cuando
+ * falta correr una migración. Se distingue para poder guardar lo demás en vez
+ * de tirar la operación entera: perder el dibujo del recorrido es molesto,
+ * perder la ruta que se acababa de cotizar lo es mucho más.
+ */
+export function faltaColumna(e: unknown): boolean {
+  const msg = e instanceof Error ? e.message : String(e ?? '');
+  return /column .* does not exist|Could not find the .* column|schema cache/i.test(msg);
+}

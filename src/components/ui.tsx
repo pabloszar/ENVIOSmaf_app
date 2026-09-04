@@ -117,7 +117,7 @@ export function Panel({
   if (!abierto) return null;
   const max = ancho === 'inmersivo' ? 'max-w-3xl' : 'max-w-md';
   return (
-    <div className="fixed inset-0 z-50 flex justify-end">
+    <div className="fixed inset-0 z-[1200] flex justify-end">
       <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onCerrar} />
       <div className={`relative flex h-full w-full ${max} flex-col border-l border-white/[0.08] bg-surface shadow-panel`}>
         <div className="flex items-center justify-between border-b border-surface-line px-5 py-4">
@@ -139,6 +139,11 @@ export function Panel({
  * A diferencia del Panel lateral, no empuja la vista ni obliga a leer en una
  * columna angosta — un formulario de dos columnas cabe cómodo. Cierra con Esc
  * y con clic afuera, y bloquea el scroll del fondo mientras está abierta.
+ *
+ * Vive en z-1200 porque encima de un mapa a pantalla completa hay dos capas
+ * más altas que cualquier otra de la app: los paneles de vidrio en 900 y los
+ * controles de Leaflet en 1000. Una ventana modal por debajo de ellos sería
+ * una ventana que no se puede usar.
  */
 export function Modal({
   abierto, onCerrar, titulo, descripcion, children, ancho = 'normal',
@@ -162,7 +167,7 @@ export function Modal({
   const max = { chico: 'max-w-md', normal: 'max-w-2xl', ancho: 'max-w-4xl' }[ancho];
 
   return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto p-4 sm:p-8">
+    <div className="fixed inset-0 z-[1200] flex items-start justify-center overflow-y-auto p-4 sm:p-8">
       <div className="fixed inset-0 bg-black/70 backdrop-blur-sm" onClick={onCerrar} />
       <div role="dialog" aria-modal="true" aria-label={titulo}
         className={`relative my-auto w-full ${max} overflow-hidden rounded-2xl border border-white/[0.09]
