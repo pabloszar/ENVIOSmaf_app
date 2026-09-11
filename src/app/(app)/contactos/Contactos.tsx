@@ -6,6 +6,9 @@ import { api } from '@/lib/cliente';
 import { Campo, Input, Boton, Aviso, Panel, Etiqueta, useAccion } from '@/components/ui';
 import type { Contacto, RolContacto } from '@/types';
 
+/** La lista trae si el chofer ya tiene PIN. Del PIN mismo no llega nada. */
+type ContactoEnLista = Contacto & { tiene_pin?: boolean };
+
 const ROLES: { v: RolContacto; label: string }[] = [
   { v: 'chofer', label: 'Chofer' },
   { v: 'ayudante', label: 'Ayudante' },
@@ -19,9 +22,10 @@ const ETIQUETA_ROL: Record<string, string> = Object.fromEntries(ROLES.map((r) =>
 const VACIO: Partial<Contacto> = { nombre: '', roles: [], dias_credito: 0, activo: true };
 const FILTROS = ['todos', 'chofer', 'ayudante', 'vendedor', 'cliente_b2b', 'cliente_b2c', 'proveedor'] as const;
 
-export default function Contactos({ contactos }: { contactos: Contacto[] }) {
+export default function Contactos({ contactos }: { contactos: ContactoEnLista[] }) {
   const router = useRouter();
   const [editando, setEditando] = useState<Partial<Contacto> | null>(null);
+  const [pineando, setPineando] = useState<ContactoEnLista | null>(null);
   const [filtro, setFiltro] = useState<(typeof FILTROS)[number]>('todos');
   const { cargando, error, correr, setError } = useAccion();
 
@@ -74,12 +78,13 @@ export default function Contactos({ contactos }: { contactos: Contacto[] }) {
                 <th className="px-3 py-3 text-left">Roles</th>
                 <th className="px-3 py-3 text-left">Teléfono</th>
                 <th className="px-3 py-3 text-right">Crédito</th>
+                <th className="px-3 py-3 text-left">App del chofer</th>
                 <th className="px-5 py-3"></th>
               </tr>
             </thead>
             <tbody>
               {lista.length === 0 && (
-                <tr><td colSpan={5} className="px-5 py-8 text-center text-ink-mute">Sin contactos en este filtro.</td></tr>
+                <tr><td colSpan={6} className="px-5 py-8 text-center text-ink-mute">Sin contactos en este filtro.</td></tr>
               )}
               {lista.map((c) => (
                 <tr key={c.id} className="border-b border-surface-line last:border-0 hover:bg-surface-sunk/50">
@@ -93,7 +98,19 @@ export default function Contactos({ contactos }: { contactos: Contacto[] }) {
                     </div>
                   </td>
                   <td className="px-3 py-3 text-ink-soft">{c.telefono ?? '—'}</td>
+                  {/* Solo para quien maneja: el PIN abre /chofer, y ahí no hay
+                      nada que le sirva a un vendedor o a un cliente. */}
                   <td className="px-3 py-3 text-right cifra">{c.dias_credito > 0 ? `${c.dias_credito} días` : '—'}</td>
+                  <td className="px-3 py-3">
+                    {c.roles?.includes('chofer') ? (
+                      <button onClick={() => { setError(null); setPineando(c); }}
+                        className="text-xs text-brand hover:underline">
+                        {c.tiene_pin ? 'Cambiar PIN' : 'Poner PIN'}
+                      </button>
+                    ) : (
+                      <span className="text-xs text-ink-mute">—</span>
+                    )}
+                  </td>
                   <td className="px-5 py-3 text-right">
                     <button onClick={() => { setError(null); setEditando({ ...c }); }}
                       className="text-brand hover:underline">Editar</button>
@@ -161,6 +178,93 @@ export default function Contactos({ contactos }: { contactos: Contacto[] }) {
           </div>
         )}
       </Panel>
+
+      <PanelPin chofer={pineando} onCerrar={() => setPineando(null)}
+        onListo={() => { setPineando(null); router.refresh(); }} />
     </div>
+  );
+}
+
+/**
+ * El PIN con el que un chofer entra a la app de choferes.
+ *
+ * No se puede consultar el que ya tiene: de él solo se guarda una huella, ni
+ * siquiera para ti. Si a alguien se le olvida, se le pone uno nuevo — que es
+ * también lo que hace que un PIN robado de tu pantalla no exista.
+ *
+ * Se teclea dos veces por lo mismo: un dedazo al ponerlo deja a alguien fuera
+ * en la calle, y el error solo aparecería cuando ya está lejos.
+ */
+function PanelPin({ chofer, onCerrar, onListo }: {
+  chofer: ContactoEnLista | null;
+  onCerrar: () => void;
+  onListo: () => void;
+}) {
+  const [pin, setPin] = useState('');
+  const [otra, setOtra] = useState('');
+  const { cargando, error, correr, setError } = useAccion();
+
+  function cerrar() { setPin(''); setOtra(''); setError(null); onCerrar(); }
+
+  async function guardar() {
+    if (!chofer) return;
+    if (pin !== otra) { setError('Los dos PIN no son iguales.'); return; }
+    await correr(async () => {
+      await api('/api/contactos/pin', { method: 'PUT', body: { id: chofer.id, pin } });
+      setPin(''); setOtra('');
+      onListo();
+    });
+  }
+
+  async function quitar() {
+    if (!chofer) return;
+    if (!confirm(`¿Quitarle el acceso a ${chofer.nombre}? Sale de la app de inmediato.`)) return;
+    await correr(async () => {
+      await api('/api/contactos/pin', { method: 'DELETE', body: { id: chofer.id } });
+      onListo();
+    });
+  }
+
+  return (
+    <Panel abierto={!!chofer} onCerrar={cerrar}
+      titulo={chofer ? `PIN de ${chofer.nombre}` : 'PIN'}>
+      {chofer && (
+        <div className="space-y-4">
+          <p className="text-sm leading-relaxed text-ink-mute">
+            Con este PIN entra a <span className="text-ink-soft">/chofer</span> desde su
+            teléfono y ve solo los viajes donde va manejando. De 4 a 8 dígitos;
+            6 es lo recomendable.
+          </p>
+
+          <Campo label="PIN nuevo">
+            <Input type="password" inputMode="numeric" autoComplete="new-password"
+              value={pin} onChange={(e) => setPin(e.target.value.replace(/\D/g, '').slice(0, 8))} />
+          </Campo>
+          <Campo label="Otra vez" hint="Un dedazo aquí lo deja fuera en la calle.">
+            <Input type="password" inputMode="numeric" autoComplete="new-password"
+              value={otra} onChange={(e) => setOtra(e.target.value.replace(/\D/g, '').slice(0, 8))} />
+          </Campo>
+
+          <p className="rounded-lg bg-surface-sunk p-3 text-xs leading-relaxed text-ink-mute">
+            El PIN no se guarda como se teclea, así que no hay dónde consultarlo
+            después. Si se le olvida, ponle uno nuevo aquí mismo.
+          </p>
+
+          <Aviso error={error} />
+          <div className="flex flex-wrap gap-3 pt-2">
+            <Boton onClick={guardar} disabled={cargando || pin.length < 4}>
+              {cargando ? 'Guardando…' : chofer.tiene_pin ? 'Cambiar PIN' : 'Poner PIN'}
+            </Boton>
+            <Boton variante="fantasma" onClick={cerrar}>Cancelar</Boton>
+            {chofer.tiene_pin && (
+              <button type="button" onClick={quitar} disabled={cargando}
+                className="ml-auto text-sm text-ink-mute transition hover:text-bad">
+                Quitarle el acceso
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+    </Panel>
   );
 }

@@ -1,5 +1,5 @@
 import { db } from '@/lib/db';
-import { conManejo, limpiarNumericos, soloCampos } from '@/lib/api';
+import { conManejo, faltaColumna, limpiarNumericos, soloCampos } from '@/lib/api';
 
 export const dynamic = 'force-dynamic';
 
@@ -9,12 +9,32 @@ const CAMPOS = [
   'dias_credito', 'limite_credito', 'calificacion', 'activo', 'notas',
 ];
 
+/** Las columnas que sí salen al navegador. `pin_hash` no está, y es a propósito. */
+const VISIBLES =
+  'id, nombre, roles, telefono, email, pct_override, dias_credito, limite_credito, '
+  + 'calificacion, activo, notas, creado_en';
+
 export async function GET() {
   return conManejo(async () => {
-    const { data, error } = await db()
-      .from('contactos').select('*').order('activo', { ascending: false }).order('nombre');
+    // Lista explícita y no `*`: con `*`, la huella del PIN viajaría al
+    // navegador nada más por existir la columna. No sirve para entrar, pero no
+    // tiene por qué salir de la base.
+    const pedir = (cols: string) => db()
+      .from('contactos').select(cols)
+      .order('activo', { ascending: false }).order('nombre');
+
+    // `pin_hash` llega con fase8; sin esa migración se pide solo lo que existe,
+    // para no tumbar la pantalla de Contactos entera por una columna nueva.
+    let { data, error } = await pedir(`${VISIBLES}, pin_hash`);
+    if (error && faltaColumna(error.message)) ({ data, error } = await pedir(VISIBLES));
     if (error) throw new Error(error.message);
-    return data;
+
+    // Del PIN solo sale si lo tiene o no, que es lo único que la pantalla
+    // necesita para decidir entre "Poner PIN" y "Cambiar PIN".
+    return ((data ?? []) as unknown as Record<string, unknown>[]).map((fila) => {
+      const { pin_hash: hash, ...c } = fila;
+      return { ...c, tiene_pin: !!hash };
+    });
   });
 }
 

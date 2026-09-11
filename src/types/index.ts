@@ -304,3 +304,40 @@ export interface RutaPnl {
   utilidad: number;
   margen_pct: number | null;
 }
+
+/**
+ * Una misión como la ve el chofer (`v_mision_chofer`).
+ *
+ * Trae el precio —lo necesita para cobrar— y NO trae gastos, comisiones,
+ * utilidad ni margen. El recorte está en la vista y no en el select de cada
+ * pantalla, para que no dependa de que quien escriba la siguiente se acuerde
+ * de no pedir el margen.
+ */
+export interface MisionChofer {
+  envio_id: string;
+  ruta_id: string;
+  secuencia: number;
+  destino: string;
+  zona: string | null;
+  lat: number | null;
+  lng: number | null;
+  tamano_carga: TamanoCarga | null;
+  num_articulos: number | null;
+  num_pisos: number | null;
+  notas_envio: string | null;
+  precio: number;
+  a_credito: boolean;
+  cobro_detallado: boolean;
+  /** Cuándo la palomeó. `null` = todavía no la entrega. */
+  entregado_en: string | null;
+  cobrado: number;
+  evidencias: number;
+  cliente: string | null;
+  cliente_telefono: string | null;
+  folio: number;
+  fecha: string;
+  estado: EstadoRuta;
+  roundtrip: boolean;
+  notas_ruta: string | null;
+  vehiculo: string | null;
+}

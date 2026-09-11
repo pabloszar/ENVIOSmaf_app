@@ -103,6 +103,69 @@ endpoint y no creando la ruta y luego cada parada, porque a medio camino
 quedaría un viaje incompleto y porque el alta normal de una parada le suma sus
 km a la ruta — aquí el total ya viene del recorrido real y sumarlo lo duplicaría.
 
+## Dos roles, una app
+
+El chofer entra a la misma app, no a otra. La cookie ya traía `rol` desde el
+primer día esperando esto, y los puntos que hubo que tocar fueron tres:
+`auth.ts`, `middleware.ts` y el login.
+
+Una app aparte se ve más limpia y no lo es. Habría necesitado la misma
+`SUPABASE_SERVICE_ROLE_KEY` —la llave que ignora RLS— viviendo en un segundo
+despliegue, que es duplicar la exposición, no evitarla; y habría forkeado
+tipos, modelo, endpoints y `guardarDesglose`, dejando dos programas cobrando el
+mismo flete cada uno por su cuenta. **La separación que importa es de permiso,
+no de carpeta.**
+
+Ese permiso tiene dos mitades y hacen falta las dos:
+
+- **`middleware.ts`** mira el CAMINO. Un chofer solo pasa a `/chofer` y
+  `/api/chofer`; cualquier otra pantalla lo rebota y cualquier otro endpoint le
+  responde 403.
+- **`lib/sesion.ts`** mira el DUEÑO. `exigirChofer()` y `envioDelChofer()` se
+  llaman en cada endpoint que escribe. Sin eso, un chofer leería el viaje de
+  otro cambiando un id en la URL, y la puerta lo dejaría pasar porque el camino
+  sí es suyo.
+
+`exigirChofer()` vuelve a preguntarle a la base si sigue siendo chofer con PIN,
+y esa consulta de más es el punto: la cookie va firmada y dura sesenta días, así
+que sin ese paso quitarle el acceso a alguien no lo sacaría hasta que expirara
+sola. El middleware no puede hacerlo —corre en edge, sería una consulta por
+petición— pero por ahí pasan todas las pantallas del chofer y todo lo que
+escribe, que es donde importa.
+
+**El PIN se guarda hasheado (PBKDF2, Web Crypto) y no se puede consultar**, ni
+tú. Un PIN olvidado no se busca: se pone uno nuevo. Seis dígitos son un millón
+de combinaciones, nada para una máquina, así que el bloqueo a los cinco fallos
+es tan necesario como el hash. Por lo mismo, `/api/contactos` pide las columnas
+por nombre en vez de `*`: con `*`, la huella viajaría al navegador solo por
+existir la columna. De ella sale `tiene_pin` y nada más.
+
+**Lo que el chofer ve lo recorta `v_mision_chofer`**, no el select de cada
+pantalla. Trae el precio —lo necesita para cobrar— y no trae gastos,
+comisiones, utilidad ni margen. En una vista, el recorte se escribe una vez; en
+los selects, depende de que quien escriba la siguiente pantalla se acuerde de
+no pedir el margen.
+
+## Entregar no es cerrar
+
+`envios.entregado_en` es del chofer: palomea de una en una, desde la calle, y
+puede deshacerlo — se toca con una mano y equivocarse de renglón es cuestión de
+tiempo.
+
+`rutas.estado = 'entregada'` sigue siendo tuyo. Congela `config_snapshot`,
+genera las comisiones y de ahí cuelga toda la cadena del dinero: eso no puede
+dispararlo un teléfono. Lo único que el chofer mueve solo es `en_curso`, cuando
+cae la primera entrega, y ese estado no toca ninguna cifra.
+
+El chofer reporta hechos; los libros los cierra quien los lleva.
+
+Su cobro pasa por `guardarDesglose` en `lib/cobro-servidor.ts`, el mismo que
+usa el detalle de la ruta. Es lo que cierra el hueco viejo: hasta hoy casi todo
+decía "se supone cobrado en efectivo al entregar" porque el que estaba ahí
+cuando el dinero cambió de mano no tenía dónde anotarlo. El efectivo se
+registra a nombre del chofer —de ahí sale su saldo en custodia—; lo de tienda y
+transferencia no, porque nunca pasó por su bolsillo.
+
 ## La navegación cambia de lado, no de contenido
 
 En escritorio es el carril de iconos de la izquierda. En un teléfono ese carril

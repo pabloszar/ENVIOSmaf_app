@@ -1,5 +1,4 @@
-Que se puedan editar las paradas dentro de cada ruta y cambiar el orden de las paradas.
-Dentro de cada parada ruta, cada gasto debo de tener la opción de agregarle una foto, un archivo y aparte un comentario. para poder agregar evidencias, ya sea de entrega o del gasto.
-Dentro de la sección de dinero: Dividir los gastos en tipo de mantenimiento, si es para mejora de servicios o gastos varios, o de limpieza, etc. para que yo pueda llevar un mejor control de en que se está gastando. Y también poder adjuntar la evidencia de cada gasto. además de tener la opción de editarlos.
-Que pueda agrega el metodo de cobro de cada ruta, y si por ejemplo se paga una parte en efectivo, otra en transferencia,y cobrado en tienda, porque por ejemplo, en el caso de cobrado en tienda ya no recupero ese dinero, ya está cobrado, ya no se vuelve a recibir, ya se toma a cuenta por decirlo así para la renta de las camionetas.
-La sección de dinero es muy grande. Podríamos dividirla en distintos distintas secciones.
+La sección dinero sigue sin convencerme. 
+La sección de dashboard es muy mejorable. Creo que puedo tener 5 secciones.
+Me gusataría agregar una IA, que me ayude por un lado: a tomar las deciones al momento de cotizar, que me diga si es viable el precio. Y por otro lado que me insights del negocio. 
+Además quiero cambiar las reglas del negocio, esto lo quiero probar cómo funciona o dentro de ajustes se puede cambiar, pero por ejemplo, poner una comisión base para integrantes del equipo (esto no se hace aún porque no lo tengo claro).

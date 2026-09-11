@@ -24,6 +24,6 @@ export async function POST(req: NextRequest) {
   }
 
   const res = NextResponse.json({ ok: true });
-  res.cookies.set(COOKIE_SESION, await firmarSesion('admin', secreto), COOKIE_OPCIONES);
+  res.cookies.set(COOKIE_SESION, await firmarSesion({ rol: 'admin' }, secreto), COOKIE_OPCIONES);
   return res;
 }
