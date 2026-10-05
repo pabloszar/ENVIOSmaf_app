@@ -1,15 +1,15 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import Image from 'next/image';
 import { api } from '@/lib/cliente';
-import { Campo, Input, Select, Boton, BotonMini, Aviso, Panel, Etiqueta, useAccion } from '@/components/ui';
+import { Campo, Input, Select, Boton, Aviso, Panel, Etiqueta, useAccion } from '@/components/ui';
 import { Sparkline } from '@/components/Cifras';
+import { Cifra, Barra } from '@/components/movimiento';
 import { mxn } from '@/lib/pricing';
-import { renderUnidad } from '@/lib/imagenes';
 import type { Vehiculo, RutaPnl } from '@/types';
+import Garage, { type UnidadGarage } from './Garage';
 
 export interface FilaRent {
   vehiculo_id: string; vehiculo: string; propiedad: string; viajes: number;
@@ -22,6 +22,18 @@ export interface FilaRent {
 
 const VACIO: Partial<Vehiculo> = { nombre: '', propiedad: 'propia', tipo: 'Pickup', activo: true };
 
+/**
+ * La flotilla, como garage.
+ *
+ * La pantalla es el garage entero y todo lo demás flota encima en vidrio,
+ * igual que en el cotizador: allá el mapa es la decisión, aquí las unidades
+ * son el tema, y ninguna de las dos cosas merece quedar en una tarjeta.
+ *
+ * Elegir una unidad no navega ni abre un panel que tape: acerca la cámara y
+ * trae sus cifras a los dos lados. Se sigue viendo de qué camioneta se habla
+ * mientras se lee cuánto dejó, que era justo lo que el panel lateral de antes
+ * tapaba.
+ */
 export default function Flotilla({
   vehiculos, rentabilidad, viajes, pctPropia, pctRentada,
 }: {
@@ -33,12 +45,32 @@ export default function Flotilla({
 }) {
   const router = useRouter();
   const [editando, setEditando] = useState<Partial<Vehiculo> | null>(null);
-  const [abierta, setAbierta] = useState<Vehiculo | null>(null);
+  const [elegida, setElegida] = useState<string | null>(null);
+  /*
+   * La última unidad que se miró, aunque ya se haya salido de ella.
+   *
+   * Las fichas no se desmontan al salir: se van deslizando. Si su contenido
+   * dependiera de `elegida`, se vaciarían en el mismo instante en que
+   * empiezan a irse y lo que se vería salir serían dos cajas en blanco.
+   */
+  const [ultima, setUltima] = useState<string | null>(null);
+  /** Cuenta las entradas: es la `key` que vuelve a correr la cascada. */
+  const [entrada, setEntrada] = useState(0);
   const { cargando, error, correr, setError } = useAccion();
 
   const rentPorId = new Map(rentabilidad.map((r) => [r.vehiculo_id, r]));
 
-  /** Utilidad mes a mes de una unidad, para el sparkline de su tarjeta. */
+  function elegir(id: string | null) {
+    if (id) {
+      // Pasar de una unidad a la de junto NO cuenta como entrada: ahí las
+      // cifras ruedan de un valor al otro, que es la comparación.
+      if (!elegida) setEntrada((n) => n + 1);
+      setUltima(id);
+    }
+    setElegida(id);
+  }
+
+  /** Utilidad mes a mes de una unidad, para su tendencia. */
   function serieDe(vehiculoId: string): number[] {
     const porMes = new Map<string, number>();
     for (const v of viajes) {
@@ -59,163 +91,123 @@ export default function Flotilla({
     });
   }
 
-  const rentAbierta = abierta ? rentPorId.get(abierta.id) : null;
-  const viajesAbierta = abierta
-    ? viajes.filter((v) => v.vehiculo_id === abierta.id).slice(-8).reverse()
-    : [];
+  const unidades: UnidadGarage[] = vehiculos.map((v) => {
+    const r = rentPorId.get(v.id);
+    const margen = r?.margen_pct != null ? `${Number(r.margen_pct).toFixed(0)}%` : null;
+    const n = Number(r?.viajes ?? 0);
+    return {
+      id: v.id,
+      nombre: v.nombre,
+      activa: v.activo,
+      pie: !v.activo ? 'inactiva' : n === 0 ? 'sin viajes' : `${n} ${n === 1 ? 'viaje' : 'viajes'}${margen ? ` · ${margen}` : ''}`,
+    };
+  });
+
+  const vista = vehiculos.find((v) => v.id === ultima) ?? null;
+  const indice = vista ? vehiculos.indexOf(vista) : -1;
+  const abierta = !!elegida;
+  const utilidadTotal = rentabilidad.reduce((s, r) => s + Number(r.utilidad ?? 0), 0);
+  const viajesTotal = rentabilidad.reduce((s, r) => s + Number(r.viajes ?? 0), 0);
+
+  const ficha = vista && {
+    v: vista,
+    r: rentPorId.get(vista.id) ?? null,
+    pct: vista.pct_renta ?? (vista.propiedad === 'rentada' ? pctRentada : pctPropia),
+    serie: serieDe(vista.id),
+    viajes: viajes.filter((x) => x.vehiculo_id === vista.id).slice(-5).reverse(),
+    indice, total: vehiculos.length,
+    onEditar: () => { setError(null); setEditando({ ...vista }); },
+  };
 
   return (
-    <div className="space-y-8">
-      <div className="flex flex-wrap items-end justify-between gap-4">
-        <div>
-          <p className="etiqueta">{vehiculos.length} unidades</p>
-          <h1 className="mt-2 text-4xl font-medium tracking-tight">Flotilla</h1>
-          <p className="mt-2 max-w-xl text-sm text-ink-mute">
-            Cada unidad cobra su % de renta del flete. Si lo dejas vacío usa el default:
-            propia {pctPropia}% · rentada {pctRentada}%.
+    <div data-pantalla-completa className="relative h-full w-full overflow-hidden">
+      <Garage unidades={unidades} elegida={elegida} onElegir={elegir} teclado={!editando} />
+
+      {/* ── De lejos: de qué pantalla se trata y cuánto deja la flotilla ── */}
+      <Capa abierta={!abierta} fuera={{ y: -10 }}
+        className="pointer-events-none absolute inset-x-4 top-4 flex items-start justify-between gap-4 md:inset-x-6 md:top-5">
+        <div className="entra">
+          <p className="etiqueta">{vehiculos.length} {vehiculos.length === 1 ? 'unidad' : 'unidades'}</p>
+          <h1 className="mt-1.5 text-3xl font-medium tracking-tight md:text-4xl">Flotilla</h1>
+          <p className="cifra mt-2 text-xs text-ink-mute">
+            <span className="text-ink-soft"><Cifra valor={utilidadTotal} /></span> de utilidad
+            {' · '}<Cifra valor={viajesTotal} formato="entero" /> viajes
           </p>
         </div>
-        <Boton onClick={() => { setError(null); setEditando({ ...VACIO }); }}>Nueva unidad</Boton>
-      </div>
+        <Boton className="pointer-events-auto shrink-0"
+          onClick={() => { setError(null); setEditando({ ...VACIO }); }}>
+          Nueva unidad
+        </Boton>
+      </Capa>
 
       {vehiculos.length === 0 && (
-        <p className="tarjeta text-sm text-ink-mute">Sin unidades todavía.</p>
+        <div className="pointer-events-none absolute inset-0 flex items-center justify-center px-6">
+          <p className="vidrio entra px-6 py-5 text-center text-sm text-ink-soft">
+            El garage está vacío. Da de alta la primera unidad.
+          </p>
+        </div>
       )}
 
-      <div className="grid gap-5 sm:grid-cols-2">
-        {vehiculos.map((v) => {
-          const r = rentPorId.get(v.id);
-          const pct = v.pct_renta ?? (v.propiedad === 'rentada' ? pctRentada : pctPropia);
-          const render = renderUnidad(v.nombre);
-          const margen = r?.margen_pct != null ? Number(r.margen_pct) : null;
-          return (
-            <button key={v.id} onClick={() => { setError(null); setAbierta(v); }}
-              className="tarjeta group overflow-hidden p-0 text-left transition hover:border-white/20">
-              <span aria-hidden className="halo"
-                style={{ background: 'radial-gradient(circle, rgba(20,160,143,0.22), transparent 70%)' }} />
+      <Capa abierta={!abierta && vehiculos.length > 0} fuera={{ y: 8 }} retardo={500}
+        className="pointer-events-none absolute inset-x-0 bottom-9 hidden justify-center lg:flex">
+        <p className="cifra text-[10.5px] uppercase tracking-[0.18em] text-ink-mute">
+          Elige una unidad
+        </p>
+      </Capa>
 
-              {/* El render vive en la tarjeta, no como adorno: identifica la unidad. */}
-              <div className="relative h-36 w-full">
-                {render ? (
-                  <Image src={render} alt={v.nombre} fill sizes="(min-width: 640px) 50vw, 100vw"
-                    className="object-contain object-right p-3 transition duration-300 group-hover:scale-[1.03]" />
-                ) : (
-                  <span className="flex h-full items-center justify-center text-xs text-ink-mute">
-                    Sin render
-                  </span>
-                )}
-              </div>
+      {/* ── De cerca: la salida, siempre en el mismo sitio ── */}
+      <Capa abierta={abierta} fuera={{ y: -10 }} retardo={160}
+        className="absolute inset-x-0 top-4 z-20 flex justify-center px-3 md:top-5">
+        <div className="vidrio-pastilla flex items-center gap-1 p-1">
+          <button type="button" onClick={() => elegir(null)}
+            className="pulsable flex items-center gap-2 rounded-full px-3.5 py-2 text-sm font-medium
+              text-ink hover:bg-white/[0.07]">
+            <span aria-hidden>←</span> Garage
+            <kbd className="cifra ml-1 hidden rounded border border-white/[0.14] px-1 text-[10px] text-ink-mute lg:inline">esc</kbd>
+          </button>
+          <span aria-hidden className="mx-0.5 h-5 w-px bg-white/[0.12]" />
+          <Paso etiqueta="Unidad anterior" apagado={indice <= 0}
+            onClick={() => elegir(vehiculos[indice - 1].id)}>‹</Paso>
+          <span className="cifra min-w-[3.4rem] text-center text-xs text-ink-soft">
+            {String(indice + 1).padStart(2, '0')} / {String(vehiculos.length).padStart(2, '0')}
+          </span>
+          <Paso etiqueta="Unidad siguiente" apagado={indice < 0 || indice >= vehiculos.length - 1}
+            onClick={() => elegir(vehiculos[indice + 1].id)}>›</Paso>
+        </div>
+      </Capa>
 
-              <div className="relative space-y-3 px-5 pb-5">
-                <div className="flex flex-wrap items-center gap-2">
-                  <span className="text-lg font-medium tracking-tight">{v.nombre}</span>
-                  <Etiqueta tono={v.propiedad === 'rentada' ? 'aviso' : 'info'}>{v.propiedad}</Etiqueta>
-                  {!v.activo && <Etiqueta>inactiva</Etiqueta>}
-                </div>
+      {/* ── Las fichas ──
+          Dos, una a cada lado, y no una sola: a la izquierda quién es y
+          cuánto dejó; a la derecha cómo rinde y qué ha hecho. La unidad
+          queda en medio y es ella la que une las dos mitades. */}
+      <Capa abierta={abierta} fuera={{ x: -30 }} retardo={220}
+        className="absolute bottom-5 left-5 top-[4.75rem] z-10 hidden w-[332px] lg:block">
+        <aside aria-label="Identidad y utilidad" className="vidrio max-h-full overflow-y-auto p-5">
+          {ficha && <div key={entrada} className="cascada"><Identidad {...ficha} /></div>}
+        </aside>
+      </Capa>
 
-                <div className="grid grid-cols-3 gap-3 text-sm">
-                  <Mini etiqueta="Viajes" valor={String(r?.viajes ?? 0)} />
-                  <Mini etiqueta="Utilidad" valor={mxn(r?.utilidad ?? 0)} />
-                  <Mini etiqueta="Margen"
-                    valor={margen != null ? `${margen.toFixed(0)}%` : '—'}
-                    tono={margen == null ? undefined : margen < 0 ? 'text-bad' : margen < 15 ? 'text-warn' : 'text-good'} />
-                </div>
+      <Capa abierta={abierta} fuera={{ x: 30 }} retardo={300}
+        className="absolute bottom-5 right-5 top-[4.75rem] z-10 hidden w-[332px] lg:block">
+        <aside aria-label="Rendimiento y viajes" className="vidrio max-h-full overflow-y-auto p-5">
+          {ficha && <div key={entrada} className="cascada"><Rendimiento {...ficha} /></div>}
+        </aside>
+      </Capa>
 
-                <div className="flex items-center justify-between border-t border-white/[0.06] pt-3">
-                  <span className="text-xs text-ink-mute">
-                    Renta {pct}%{v.pct_renta == null && ' (default)'}
-                  </span>
-                  <Sparkline valores={serieDe(v.id)} titulo={`Utilidad mes a mes de ${v.nombre}`} />
-                </div>
-              </div>
-            </button>
-          );
-        })}
-      </div>
-
-      {/* ── Panel inmersivo de la unidad ── */}
-      <Panel abierto={!!abierta} onCerrar={() => setAbierta(null)} ancho="inmersivo"
-        titulo={abierta?.nombre ?? ''}>
-        {abierta && (
-          <div className="space-y-6">
-            <div className="relative overflow-hidden rounded-2xl border border-white/[0.07] bg-black/30">
-              <span aria-hidden className="halo"
-                style={{ background: 'radial-gradient(circle, rgba(20,160,143,0.28), transparent 70%)' }} />
-              <div className="relative h-56 w-full">
-                {renderUnidad(abierta.nombre) ? (
-                  <Image src={renderUnidad(abierta.nombre)!} alt={abierta.nombre} fill
-                    sizes="768px" className="object-contain p-4" priority />
-                ) : (
-                  <span className="flex h-full items-center justify-center text-sm text-ink-mute">
-                    Sin render para esta unidad
-                  </span>
-                )}
-              </div>
-              <div className="relative flex flex-wrap items-center gap-2 px-5 pb-4">
-                <Etiqueta tono={abierta.propiedad === 'rentada' ? 'aviso' : 'info'}>{abierta.propiedad}</Etiqueta>
-                {abierta.placas && <span className="text-xs text-ink-mute">{abierta.placas}</span>}
-                {abierta.capacidad && <span className="text-xs text-ink-mute">· {abierta.capacidad}</span>}
-                {rentAbierta?.ultimo_viaje && (
-                  <span className="text-xs text-ink-mute">· último viaje {rentAbierta.ultimo_viaje}</span>
-                )}
-              </div>
+      {/* En el teléfono no caben a los lados: suben juntas desde abajo y la
+          unidad se queda en el tercio de arriba. */}
+      <Capa abierta={abierta} fuera={{ y: 36 }} retardo={220}
+        className="absolute inset-x-2 bottom-2 top-[46%] z-10 lg:hidden">
+        <aside aria-label="Datos de la unidad" className="vidrio h-full overflow-y-auto p-4">
+          {ficha && (
+            <div key={entrada} className="cascada">
+              <Identidad {...ficha} />
+              <div className="my-5 h-px bg-white/[0.08]" />
+              <Rendimiento {...ficha} />
             </div>
-
-            <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-              <Dato etiqueta="Ingreso" valor={mxn(rentAbierta?.ingreso ?? 0)} />
-              <Dato etiqueta="Utilidad" valor={mxn(rentAbierta?.utilidad ?? 0)} />
-              <Dato etiqueta="Gastos fijos" valor={mxn(rentAbierta?.gastos_fijos_unidad ?? 0)}
-                nota="mantenimiento, seguro, tenencia" />
-              <Dato etiqueta="Deja al final"
-                valor={mxn(Number(rentAbierta?.utilidad_despues_fijos ?? rentAbierta?.utilidad ?? 0))}
-                tono={Number(rentAbierta?.utilidad_despues_fijos ?? 0) < 0 ? 'text-bad' : 'text-good'}
-                nota="después de sus gastos fijos" />
-            </div>
-
-            {(rentAbierta?.ingreso_por_km != null || rentAbierta?.km_recorridos) && (
-              <div className="grid grid-cols-3 gap-3">
-                <Dato etiqueta="Km recorridos" valor={`${Number(rentAbierta?.km_recorridos ?? 0).toLocaleString('es-MX')} km`} />
-                <Dato etiqueta="Ingreso por km"
-                  valor={rentAbierta?.ingreso_por_km != null ? mxn(Number(rentAbierta.ingreso_por_km)) : '—'} />
-                <Dato etiqueta="Costo de viaje por km"
-                  valor={rentAbierta?.costo_viaje_por_km != null ? mxn(Number(rentAbierta.costo_viaje_por_km)) : '—'}
-                  nota="solo rutas con km capturados" />
-              </div>
-            )}
-
-            <section className="tarjeta-tabla">
-              <h3 className="border-b border-white/[0.06] px-5 py-3.5 text-sm font-medium">Últimos viajes</h3>
-              {viajesAbierta.length === 0 ? (
-                <p className="px-5 py-6 text-sm text-ink-mute">Esta unidad todavía no tiene viajes.</p>
-              ) : (
-                <table className="w-full text-sm">
-                  <tbody>
-                    {viajesAbierta.map((v) => (
-                      <tr key={v.ruta_id} className="fila">
-                        <td className="px-5 py-2.5">
-                          <Link href={`/rutas/${v.ruta_id}`} className="cifra text-brand hover:underline">
-                            #{v.folio}
-                          </Link>
-                        </td>
-                        <td className="px-3 py-2.5 text-ink-soft">{v.fecha}</td>
-                        <td className="px-3 py-2.5 text-right cifra">{mxn(Number(v.ingreso))}</td>
-                        <td className={`px-5 py-2.5 text-right cifra ${Number(v.utilidad) < 0 ? 'text-bad' : 'text-ink'}`}>
-                          {mxn(Number(v.utilidad))}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              )}
-            </section>
-
-            <div className="flex gap-3">
-              <Boton onClick={() => { setEditando({ ...abierta }); setAbierta(null); }}>Editar unidad</Boton>
-              <BotonMini onClick={() => setAbierta(null)}>Cerrar</BotonMini>
-            </div>
-          </div>
-        )}
-      </Panel>
+          )}
+        </aside>
+      </Capa>
 
       {/* ── Alta / edición ── */}
       <Panel abierto={!!editando} onCerrar={() => setEditando(null)}
@@ -268,21 +260,198 @@ export default function Flotilla({
   );
 }
 
-function Mini({ etiqueta, valor, tono }: { etiqueta: string; valor: string; tono?: string }) {
+
+/**
+ * Algo que flota sobre el garage y entra o se va sin desmontarse.
+ *
+ * `inert` mientras está fuera: sigue en el DOM —para poder irse animando— y
+ * sin eso el tabulador entraría a los enlaces de una ficha invisible.
+ */
+function Capa({
+  abierta, fuera, retardo = 0, className = '', children,
+}: {
+  abierta: boolean;
+  /** Hacia dónde se va, en píxeles. */
+  fuera: { x?: number; y?: number };
+  retardo?: number;
+  className?: string;
+  children: React.ReactNode;
+}) {
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => { if (ref.current) ref.current.inert = !abierta; }, [abierta]);
   return (
-    <div>
-      <p className="text-[11px] uppercase tracking-wide text-ink-mute">{etiqueta}</p>
-      <p className={`cifra mt-0.5 font-medium ${tono ?? 'text-ink'}`}>{valor}</p>
+    <div ref={ref} data-abierta={abierta} aria-hidden={!abierta}
+      className={`garage-capa ${className}`}
+      style={{
+        '--fuera-x': `${fuera.x ?? 0}px`, '--fuera-y': `${fuera.y ?? 0}px`, '--retardo': `${retardo}ms`,
+      } as React.CSSProperties}>
+      {children}
     </div>
   );
 }
 
-function Dato({ etiqueta, valor, nota, tono }: { etiqueta: string; valor: string; nota?: string; tono?: string }) {
+function Paso({ etiqueta, apagado, onClick, children }: {
+  etiqueta: string; apagado: boolean; onClick: () => void; children: React.ReactNode;
+}) {
   return (
-    <div className="rounded-xl border border-white/[0.06] bg-white/[0.03] px-4 py-3">
+    <button type="button" aria-label={etiqueta} disabled={apagado} onClick={onClick}
+      className="pulsable flex h-9 w-9 items-center justify-center rounded-full text-lg leading-none
+        text-ink-soft hover:bg-white/[0.07] hover:text-ink disabled:opacity-25 disabled:hover:bg-transparent">
+      <span aria-hidden>{children}</span>
+    </button>
+  );
+}
+
+interface DatosFicha {
+  v: Vehiculo;
+  r: FilaRent | null;
+  pct: number;
+  serie: number[];
+  viajes: RutaPnl[];
+  indice: number;
+  total: number;
+  onEditar: () => void;
+}
+
+/** Quién es y cuánto dejó. */
+function Identidad({ v, r, indice, total, onEditar }: DatosFicha) {
+  const margen = r?.margen_pct != null ? Number(r.margen_pct) : null;
+  const alFinal = Number(r?.utilidad_despues_fijos ?? r?.utilidad ?? 0);
+  const tono = margen == null ? 'text-ink' : margen < 0 ? 'text-bad' : margen < 15 ? 'text-warn' : 'text-good';
+  const detalles = [v.tipo, v.placas, v.capacidad].filter(Boolean).join(' · ');
+
+  return (
+    <>
+      <div>
+        <p className="cifra text-[10.5px] uppercase tracking-[0.18em] text-ink-mute">
+          Unidad {String(indice + 1).padStart(2, '0')} de {String(total).padStart(2, '0')}
+        </p>
+        <h2 className="mt-2 text-[1.7rem] font-medium leading-tight tracking-tight">{v.nombre}</h2>
+        <div className="mt-2.5 flex flex-wrap items-center gap-2">
+          <Etiqueta tono={v.propiedad === 'rentada' ? 'aviso' : 'info'}>{v.propiedad}</Etiqueta>
+          {!v.activo && <Etiqueta>inactiva</Etiqueta>}
+          {detalles && <span className="text-xs text-ink-mute">{detalles}</span>}
+        </div>
+      </div>
+
+      <div className="mt-6 border-t border-white/[0.08] pt-5">
+        <p className="etiqueta">Utilidad</p>
+        <p className={`mt-2 text-[2.6rem] font-light leading-none tracking-tighter ${tono}`}>
+          <Cifra valor={Number(r?.utilidad ?? 0)} />
+        </p>
+        <div className="mt-4 flex items-center justify-between text-xs">
+          <span className="text-ink-mute">Margen</span>
+          <span className={`cifra font-medium ${tono}`}>{margen != null ? `${margen.toFixed(1)}%` : '—'}</span>
+        </div>
+        <span className="mt-2 block h-1 overflow-hidden rounded-full bg-white/[0.08]">
+          {/* La `key` hace que la barra vuelva a llenarse al cambiar de unidad. */}
+          <Barra key={v.id} pct={Math.max(0, Math.min(100, margen ?? 0))}
+            className={margen != null && margen < 15 ? 'bg-warn' : 'bg-good'} />
+        </span>
+      </div>
+
+      <div className="mt-6 grid grid-cols-2 gap-2.5">
+        <Dato etiqueta="Viajes"><Cifra valor={Number(r?.viajes ?? 0)} formato="entero" /></Dato>
+        <Dato etiqueta="Ingreso"><Cifra valor={Number(r?.ingreso ?? 0)} /></Dato>
+        <Dato etiqueta="Renta generada"><Cifra valor={Number(r?.renta_generada ?? 0)} /></Dato>
+        <Dato etiqueta="Gastos fijos"><Cifra valor={Number(r?.gastos_fijos_unidad ?? 0)} /></Dato>
+      </div>
+
+      <div className="mt-2.5 flex items-center justify-between rounded-xl border border-white/[0.08]
+        bg-white/[0.04] px-4 py-3">
+        <div>
+          <p className="text-[11px] uppercase tracking-wide text-ink-mute">Deja al final</p>
+          <p className="mt-0.5 text-[11px] text-ink-mute">después de sus gastos fijos</p>
+        </div>
+        <span className={`text-lg font-medium ${alFinal < 0 ? 'text-bad' : 'text-good'}`}>
+          <Cifra valor={alFinal} />
+        </span>
+      </div>
+
+      <div className="mt-5">
+        <Boton variante="suave" className="w-full" onClick={onEditar}>Editar unidad</Boton>
+      </div>
+    </>
+  );
+}
+
+/** Cómo rinde y qué ha hecho. */
+function Rendimiento({ v, r, pct, serie, viajes }: DatosFicha) {
+  const km = Number(r?.km_recorridos ?? 0);
+  return (
+    <>
+      <div>
+        <p className="etiqueta">Rendimiento</p>
+        <dl className="mt-3 divide-y divide-white/[0.07] text-sm">
+          <Renglon etiqueta="Km recorridos">
+            <Cifra valor={km} formato="entero" /> km
+          </Renglon>
+          <Renglon etiqueta="Ingreso por km">
+            {r?.ingreso_por_km != null ? mxn(Number(r.ingreso_por_km)) : '—'}
+          </Renglon>
+          <Renglon etiqueta="Costo de viaje por km">
+            {r?.costo_viaje_por_km != null ? mxn(Number(r.costo_viaje_por_km)) : '—'}
+          </Renglon>
+          <Renglon etiqueta="Combustible">
+            {v.rendimiento_kml != null ? `${v.rendimiento_kml} km/l` : 'default'}
+          </Renglon>
+          <Renglon etiqueta="Renta que cobra">
+            {pct}%{v.pct_renta == null && <span className="ml-1 text-ink-mute">default</span>}
+          </Renglon>
+        </dl>
+      </div>
+
+      <div className="mt-6 border-t border-white/[0.08] pt-5">
+        <div className="flex items-baseline justify-between">
+          <p className="etiqueta">Utilidad mes a mes</p>
+          {r?.ultimo_viaje && <span className="cifra text-[11px] text-ink-mute">último {r.ultimo_viaje}</span>}
+        </div>
+        <div className="mt-4 flex h-12 items-center">
+          {serie.length >= 2
+            ? <Sparkline valores={serie} ancho={270} alto={44} titulo={`Utilidad mes a mes de ${v.nombre}`} />
+            : <span className="text-xs text-ink-mute">Hace falta más de un mes para ver la tendencia.</span>}
+        </div>
+      </div>
+
+      <div className="mt-6 border-t border-white/[0.08] pt-5">
+        <p className="etiqueta">Últimos viajes</p>
+        {viajes.length === 0 ? (
+          <p className="mt-3 text-xs text-ink-mute">Esta unidad todavía no tiene viajes.</p>
+        ) : (
+          <ul className="mt-2 divide-y divide-white/[0.07] text-sm">
+            {viajes.map((x) => (
+              <li key={x.ruta_id}>
+                <Link href={`/rutas/${x.ruta_id}`}
+                  className="group flex items-center gap-3 py-2 transition-colors hover:text-ink">
+                  <span className="cifra w-10 text-brand group-hover:underline">#{x.folio}</span>
+                  <span className="flex-1 text-xs text-ink-mute">{x.fecha}</span>
+                  <span className={`cifra ${Number(x.utilidad) < 0 ? 'text-bad' : 'text-ink'}`}>
+                    {mxn(Number(x.utilidad))}
+                  </span>
+                </Link>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+    </>
+  );
+}
+
+function Dato({ etiqueta, children }: { etiqueta: string; children: React.ReactNode }) {
+  return (
+    <div className="rounded-xl border border-white/[0.07] bg-white/[0.03] px-3.5 py-3">
       <p className="text-[11px] uppercase tracking-wide text-ink-mute">{etiqueta}</p>
-      <p className={`cifra mt-1 font-medium ${tono ?? 'text-ink'}`}>{valor}</p>
-      {nota && <p className="mt-1 text-[11px] text-ink-mute">{nota}</p>}
+      <p className="mt-1 font-medium text-ink">{children}</p>
+    </div>
+  );
+}
+
+function Renglon({ etiqueta, children }: { etiqueta: string; children: React.ReactNode }) {
+  return (
+    <div className="flex items-center justify-between gap-3 py-2.5">
+      <dt className="text-ink-mute">{etiqueta}</dt>
+      <dd className="cifra text-ink">{children}</dd>
     </div>
   );
 }

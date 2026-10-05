@@ -16,7 +16,7 @@ const esImagen = (a: Adjunto) => (a.tipo_mime ?? '').startsWith('image/');
  * a 200 KB la diferencia se siente al subir con datos móviles, que es
  * exactamente donde se va a usar esto: parado junto a la camioneta.
  */
-async function encoger(archivo: File): Promise<File> {
+export async function encoger(archivo: File): Promise<File> {
   if (!archivo.type.startsWith('image/') || archivo.type === 'image/heic') return archivo;
 
   const bitmap = await createImageBitmap(archivo).catch(() => null);

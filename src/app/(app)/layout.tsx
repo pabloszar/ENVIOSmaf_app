@@ -1,4 +1,5 @@
 import Navegacion, { MenuMovil } from '@/components/Navegacion';
+import Escena from '@/components/Escena';
 import BarraMetricas from '@/components/BarraMetricas';
 
 /**
@@ -35,7 +36,9 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
             <span className="hidden text-xs text-ink-mute md:block">Envíos MAF</span>
           </div>
         </header>
-        <main className="lienzo mx-auto max-w-7xl px-4 py-6 md:px-8 md:py-8">{children}</main>
+        <main className="lienzo mx-auto max-w-7xl px-4 py-6 md:px-8 md:py-8">
+          <Escena>{children}</Escena>
+        </main>
       </div>
     </div>
   );

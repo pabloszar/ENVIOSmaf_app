@@ -27,6 +27,59 @@
    * queda los toques.
    */
   --barra-movil: 0px;
+
+  /* ══════════════════════════════════════════════════════════════════════
+     Movimiento
+     ══════════════════════════════════════════════════════════════════════
+
+     Tres curvas y cinco tiempos. Todo lo que se mueve en la app sale de
+     aquí, porque lo que separa una interfaz cara de una animada es que todo
+     se mueva con el MISMO acento. Doce curvas distintas se leen como doce
+     manos distintas.
+
+     · entrada — lo que llega. Arranca rápido y frena largo. Es la curva que
+       el ojo lee como "pesado y bien hecho": la masa no aparece, se posa.
+     · salida  — lo que se va. Al revés: se despega despacio y acelera. Lo que
+       desaparece no merece que lo esperes.
+     · mando   — el cambio de estado. Se pasa un pelo y regresa. NO rebota:
+       un rebote es simpático, y esto no quiere ser simpático.
+
+     Los tiempos suben en pasos de ~1.6×, que es el salto mínimo para que dos
+     duraciones se distingan. Y hay un techo: 320 ms es lo más lento que puede
+     tardar algo que se hace cien veces al día.
+  */
+  --curva-entrada: cubic-bezier(0.16, 1, 0.30, 1);
+  --curva-salida: cubic-bezier(0.70, 0, 0.84, 0);
+  --curva-mando: cubic-bezier(0.34, 1.28, 0.64, 1);
+
+  --t-toque: 110ms;      /* el dedo ya lo sabe antes de verlo */
+  --t-rapido: 200ms;     /* hover, foco, un chip que enciende */
+  --t-medio: 320ms;      /* un panel que se abre, una pantalla que entra */
+  --t-lento: 560ms;      /* el trazo del mapa, una cifra que cuenta */
+  --t-ceremonia: 1100ms; /* solo el umbral. Una vez por sesión */
+
+  /* El retardo entre hermanos de una cascada. 45 ms es donde se percibe el
+     orden sin que el último llegue tarde: ocho tarjetas entran en 360 ms. */
+  --paso-cascada: 45ms;
+}
+
+/*
+ * Quien pidió que nada se mueva, que nada se mueva.
+ *
+ * No se apaga con `animation: none` sino con una duración de casi cero: hay
+ * animaciones de las que depende un `animationend` para limpiar estado, y
+ * apagarlas de golpe deja la pantalla a medio armar. Así llegan igual, solo
+ * que instantáneas.
+ *
+ * Va aquí arriba, fuera de todo `@layer`, para que gane sin pelear.
+ */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }
 @media (max-width: 767px) {
   :root { --barra-movil: calc(3.875rem + env(safe-area-inset-bottom)); }
@@ -121,8 +174,25 @@
   .cascaron:has([data-pantalla-completa]) {
     @apply flex h-dvh flex-col overflow-hidden;
   }
-  .lienzo:has(> [data-pantalla-completa]) {
+  /*
+   * Ojo con el `>` que ya no está.
+   *
+   * Entre el lienzo y la pantalla de mapa hay ahora un envoltorio —`Escena`,
+   * el que hace que cada pantalla entre—, así que el hijo directo del lienzo
+   * dejó de ser la página. Con el `>` puesto, este selector dejaba de casar y
+   * el cotizador volvía a tener márgenes y scroll de página.
+   *
+   * La escena tiene que medir lo mismo que el lienzo: si se quedara del alto
+   * de su contenido, el mapa mediría cero. Y tiene que ser con `h-full`, no con
+   * `flex-1`: el lienzo es un bloque, no una columna, y dentro de un bloque
+   * `flex-1` no hace nada. Así estuvo: el mapa en 0 px y, con él, todo lo que
+   * flota encima.
+   */
+  .lienzo:has([data-pantalla-completa]) {
     @apply mx-0 min-h-0 max-w-none flex-1 p-0;
+  }
+  .escena:has(> [data-pantalla-completa]) {
+    @apply flex h-full min-h-0 flex-col;
   }
 
   /*
@@ -426,4 +496,438 @@
 .pin-atenuado {
   background: theme('colors.ink.mute');
   opacity: 0.75;
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   Coreografía
+
+   Una pantalla no aparece: se arma. Y se arma en el orden en que se lee
+   —primero de qué hablamos, luego qué dejó, luego el detalle— porque el
+   movimiento es la forma más barata de decir qué mirar primero.
+
+   Es Gestalt aplicado al tiempo: lo que se mueve junto se lee como un grupo
+   (destino común), y lo que se mueve DESPUÉS se lee como subordinado. Una
+   cascada bien escalonada explica la jerarquía de una pantalla sin dibujar
+   una sola línea.
+
+   Todo anima `transform` y `opacity` y nada más. Son las dos cosas que el
+   compositor resuelve sin volver a calcular el layout: animar `height` o
+   `top` obliga al navegador a rehacer la página sesenta veces por segundo, y
+   ahí es donde una interfaz bonita se vuelve una interfaz que se atora.
+   ══════════════════════════════════════════════════════════════════════════ */
+
+@keyframes entrar {
+  from { opacity: 0; transform: translate3d(0, 14px, 0) scale(0.985); }
+  to   { opacity: 1; transform: none; }
+}
+@keyframes entrar-lado {
+  from { opacity: 0; transform: translate3d(-12px, 0, 0); }
+  to   { opacity: 1; transform: none; }
+}
+@keyframes aparecer {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+/* La línea que se traza sola. Para reglas, subrayados y marcos. */
+@keyframes trazar {
+  from { transform: scaleX(0); }
+  to   { transform: scaleX(1); }
+}
+
+.entra {
+  animation: entrar var(--t-medio) var(--curva-entrada) backwards;
+}
+.entra-lado {
+  animation: entrar-lado var(--t-medio) var(--curva-entrada) backwards;
+}
+
+/*
+ * La cascada.
+ *
+ * El índice se reparte con `nth-child` y no con un estilo en línea para que
+ * los componentes no tengan que contar. Se topa en el doceavo a propósito:
+ * con ochenta rutas, un escalón por fila dejaría la última entrando tres
+ * segundos y medio tarde. Pasado el doce, todas comparten el último tiempo —
+ * el ojo ya entendió que era una lista y dejó de contar.
+ */
+.cascada > * {
+  animation: entrar var(--t-medio) var(--curva-entrada) backwards;
+  animation-delay: calc(var(--paso-cascada) * var(--i, 0));
+}
+.cascada > *:nth-child(1)  { --i: 0 }
+.cascada > *:nth-child(2)  { --i: 1 }
+.cascada > *:nth-child(3)  { --i: 2 }
+.cascada > *:nth-child(4)  { --i: 3 }
+.cascada > *:nth-child(5)  { --i: 4 }
+.cascada > *:nth-child(6)  { --i: 5 }
+.cascada > *:nth-child(7)  { --i: 6 }
+.cascada > *:nth-child(8)  { --i: 7 }
+.cascada > *:nth-child(9)  { --i: 8 }
+.cascada > *:nth-child(10) { --i: 9 }
+.cascada > *:nth-child(11) { --i: 10 }
+.cascada > *:nth-child(n+12) { --i: 11 }
+
+/*
+ * Lo que se toca, responde.
+ *
+ * 110 ms y una escala de 0.97: por debajo de eso no se siente, por encima se
+ * siente lento. El truco es que el REGRESO sea más lento que la ida — así el
+ * control se lee como algo con masa que se hunde y vuelve, no como una imagen
+ * que parpadea de tamaño.
+ */
+.pulsable {
+  transition: transform var(--t-rapido) var(--curva-entrada),
+              border-color var(--t-rapido) var(--curva-entrada),
+              background-color var(--t-rapido) var(--curva-entrada);
+}
+.pulsable:active {
+  transform: scale(0.97);
+  transition-duration: var(--t-toque);
+}
+
+/*
+ * Grano.
+ *
+ * Un cuarto de por ciento de ruido sobre todo. No se ve —si se nota, está
+ * mal— y hace todo el trabajo: sin él, un degradado oscuro se corta en
+ * bandas porque ocho bits no alcanzan para tanto negro seguido, y la pantalla
+ * se lee como un render. El ruido rompe la banda y la superficie pasa a
+ * sentirse material.
+ *
+ * Va fijo y por encima de todo, con los eventos apagados: es una película
+ * sobre el vidrio, no una capa de la interfaz.
+ */
+body::after {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  pointer-events: none;
+  opacity: 0.028;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='200'%3E%3Cfilter id='r'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='200' height='200' filter='url(%23r)'/%3E%3C/svg%3E");
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   El umbral
+
+   Lo único de la app que se toma su tiempo. Entrar pasa una vez cada treinta
+   días —lo que dura la sesión— y es el momento en que conviene que el sistema
+   se presente: que se sienta que se enciende algo, no que se abrió una página.
+   Pasada esa puerta, todo corre a 320 ms.
+
+   Regla que no se rompe: **la ceremonia nunca retrasa el trabajo**. El campo
+   de la contraseña tiene el foco desde el primer frame y acepta teclas
+   mientras el resto todavía se está armando. Quien ya sabe su contraseña
+   entra antes de que termine la animación, y esa es justamente la prueba de
+   que el adorno no estorba.
+   ══════════════════════════════════════════════════════════════════════════ */
+
+/* Máquina de escribir. `steps()` es lo que lo vuelve teclas y no un barrido. */
+@keyframes teclear {
+  from { width: 0 }
+  to   { width: 100% }
+}
+@keyframes latir-cursor {
+  0%, 45%  { opacity: 1 }
+  50%, 95% { opacity: 0 }
+  100%     { opacity: 1 }
+}
+/* Las escuadras del marco, que se dibujan solas desde la esquina. */
+@keyframes escuadra-h { from { transform: scaleX(0) } to { transform: scaleX(1) } }
+@keyframes escuadra-v { from { transform: scaleY(0) } to { transform: scaleY(1) } }
+/* El barrido que recorre la pantalla al verificar. */
+@keyframes barrer {
+  from { transform: translateY(-100%) }
+  to   { transform: translateY(100vh) }
+}
+/* Un no de la interfaz: corto, seco, sin rebote simpático. */
+@keyframes negar {
+  10%, 90% { transform: translate3d(-2px, 0, 0) }
+  30%, 70% { transform: translate3d(4px, 0, 0) }
+  50%      { transform: translate3d(-4px, 0, 0) }
+}
+/* El pulso del punto de estado: vivo, no parpadeante. */
+@keyframes pulso {
+  0%, 100% { opacity: 1; transform: scale(1) }
+  50%      { opacity: 0.45; transform: scale(0.82) }
+}
+
+.teclea {
+  display: inline-block;
+  overflow: hidden;
+  white-space: nowrap;
+  vertical-align: bottom;
+  animation: teclear var(--dur, 600ms) steps(var(--letras, 20), end) backwards;
+  animation-delay: var(--espera, 0ms);
+}
+.cursor-vivo { animation: latir-cursor 1.1s steps(1, end) infinite }
+.niega { animation: negar 320ms var(--curva-mando) }
+.pulsa { animation: pulso 2.4s var(--curva-entrada) infinite }
+
+.escuadra {
+  position: absolute;
+  pointer-events: none;
+}
+.escuadra::before, .escuadra::after {
+  content: '';
+  position: absolute;
+  background: theme('colors.brand.DEFAULT');
+  opacity: 0.55;
+}
+/* El brazo horizontal y el vertical de cada esquina, cada uno creciendo desde
+   su propio origen: así la escuadra se dibuja hacia afuera, como un trazo. */
+.escuadra::before {
+  height: 1px; width: 2.5rem; top: 0;
+  animation: escuadra-h var(--t-lento) var(--curva-entrada) backwards;
+  animation-delay: var(--espera, 0ms);
+}
+.escuadra::after {
+  width: 1px; height: 2.5rem; left: 0;
+  animation: escuadra-v var(--t-lento) var(--curva-entrada) backwards;
+  animation-delay: var(--espera, 0ms);
+}
+.escuadra-si  { top: 1.25rem; left: 1.25rem }
+.escuadra-si::before  { left: 0; transform-origin: left }
+.escuadra-si::after   { top: 0; transform-origin: top }
+.escuadra-sd  { top: 1.25rem; right: 1.25rem }
+.escuadra-sd::before  { right: 0; transform-origin: right }
+.escuadra-sd::after   { top: 0; right: 0; left: auto; transform-origin: top }
+.escuadra-ii  { bottom: 1.25rem; left: 1.25rem }
+.escuadra-ii::before  { left: 0; top: auto; bottom: 0; transform-origin: left }
+.escuadra-ii::after   { bottom: 0; transform-origin: bottom }
+.escuadra-id  { bottom: 1.25rem; right: 1.25rem }
+.escuadra-id::before  { right: 0; top: auto; bottom: 0; transform-origin: right }
+.escuadra-id::after   { bottom: 0; right: 0; left: auto; transform-origin: bottom }
+
+/* La línea que baja mientras se verifica. Teal, delgada y con estela. */
+.barrido {
+  position: fixed;
+  inset-inline: 0;
+  height: 25vh;
+  pointer-events: none;
+  z-index: 60;
+  background: linear-gradient(to bottom,
+    transparent,
+    rgba(20, 160, 143, 0.06) 60%,
+    rgba(20, 160, 143, 0.5) 99%,
+    rgba(20, 160, 143, 0.9));
+  animation: barrer 900ms var(--curva-entrada) infinite;
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   Respuesta al cursor
+
+   Una tarjeta que no acusa el paso del ratón se siente impresa. Dos píxeles
+   de subida y un poco más de luz en el borde bastan: lo que se busca es que
+   la superficie conteste, no que salte. Si el gesto se nota, es demasiado.
+   ══════════════════════════════════════════════════════════════════════════ */
+
+.levanta {
+  transition: transform var(--t-medio) var(--curva-entrada),
+              border-color var(--t-medio) var(--curva-entrada),
+              box-shadow var(--t-medio) var(--curva-entrada);
+}
+.levanta:hover {
+  transform: translate3d(0, -2px, 0);
+  border-color: rgba(255, 255, 255, 0.13);
+  box-shadow:
+    inset 0 1px 0 0 rgba(255, 255, 255, 0.09),
+    0 18px 40px -16px rgba(0, 0, 0, 0.85);
+}
+/* El halo se aviva con la tarjeta: es la misma luz, más cerca. */
+.halo-vivo {
+  transition: opacity var(--t-lento) var(--curva-entrada),
+              transform var(--t-lento) var(--curva-entrada);
+}
+.levanta:hover .halo-vivo {
+  opacity: 1;
+  transform: scale(1.12);
+}
+
+/*
+ * El filo de foco.
+ *
+ * El anillo de foco del navegador es un rectángulo pegado; esto es una línea
+ * que se abre desde el centro del control. Se ve mejor y dice lo mismo, y
+ * sigue siendo visible con el teclado, que es para lo que existe el foco.
+ */
+.filo-foco {
+  position: relative;
+}
+.filo-foco::after {
+  content: '';
+  position: absolute;
+  inset-inline: 0.75rem;
+  bottom: -1px;
+  height: 1px;
+  background: theme('colors.brand.DEFAULT');
+  transform: scaleX(0);
+  transition: transform var(--t-medio) var(--curva-entrada);
+}
+.filo-foco:focus-within::after { transform: scaleX(1) }
+
+/* ══════════════════════════════════════════════════════════════════════════
+   Lo que se abre encima
+
+   Un modal que aparece de golpe se lee como un error del navegador. Uno que
+   crece un 2% desde su centro mientras el fondo se oscurece se lee como algo
+   que TÚ abriste — y esa diferencia es toda la sensación de control.
+
+   El velo y la ventana entran por separado y con tiempos distintos: primero
+   oscurece, y encima llega la ventana. Juntos se leen como una sola capa
+   plana; escalonados, como dos planos a distinta profundidad.
+   ══════════════════════════════════════════════════════════════════════════ */
+
+@keyframes velo-entra { from { opacity: 0 } to { opacity: 1 } }
+@keyframes ventana-entra {
+  from { opacity: 0; transform: translate3d(0, 10px, 0) scale(0.975) }
+  to   { opacity: 1; transform: none }
+}
+@keyframes hoja-entra {
+  from { transform: translate3d(100%, 0, 0) }
+  to   { transform: none }
+}
+
+.velo   { animation: velo-entra var(--t-rapido) var(--curva-entrada) backwards }
+.ventana{ animation: ventana-entra var(--t-medio) var(--curva-entrada) 60ms backwards }
+/* El panel lateral empuja desde su propia orilla: viene de fuera de la
+   pantalla, no de la nada. Es de dónde viene lo que dice de dónde salió. */
+.hoja   { animation: hoja-entra var(--t-medio) var(--curva-entrada) backwards }
+
+/* ══════════════════════════════════════════════════════════════════════════
+   El garage
+
+   La flotilla no es una lista: es un lugar. Cada unidad está parada bajo su
+   lámpara y se entra a ella caminando —la cámara vuela— en vez de abrir una
+   ficha.
+
+   Es perspectiva real del navegador, no WebGL: piso, techo, muro, columnas y
+   unidades viven a distinta profundidad dentro de un `preserve-3d`, y al
+   mover la cámara se desplazan unos contra otros. Por eso todo lo que se
+   mueve aquí sigue siendo `transform` y `opacity`, igual que en el resto de
+   la app, y el compositor lo resuelve sin rehacer el layout.
+
+   La cámara son tres ejes anidados y no uno, porque cada uno se mueve por un
+   motivo distinto: el de fuera se acerca y se aleja (transición), el de en
+   medio gira con el cursor (cuadro a cuadro) y el de dentro se desliza de
+   una unidad a otra (transición). En un solo `transform`, el giro del cursor
+   pisaría el vuelo a media carrera.
+   ══════════════════════════════════════════════════════════════════════════ */
+
+.garage {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  perspective: 800px;
+  perspective-origin: 50% 50%;
+  background: radial-gradient(120% 90% at 50% 42%, #0e0e11 0%, #060607 72%);
+  /* Arrastrar de lado cambia de unidad: el navegador no debe leerlo como un
+     gesto de "atrás" ni desplazar la página. */
+  touch-action: pan-y;
+  user-select: none;
+}
+.garage-eje {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 0;
+  height: 0;
+  transform-style: preserve-3d;
+}
+.garage-eje .garage-eje { left: 0; top: 0; }
+/*
+ * El vuelo dura 760 ms, más que el techo de 320 del resto de la app, y es a
+ * propósito: no es un cambio de estado sino un traslado, y el ojo tiene que
+ * poder seguirlo para entender que sigue en el mismo sitio y no en otra
+ * pantalla. Se puede interrumpir —otro clic, Esc— y la transición retoma
+ * desde donde iba, así que nunca hay que esperarlo.
+ */
+.garage-vuela { transition: transform 760ms var(--curva-entrada); }
+.garage-pieza { position: absolute; left: 0; top: 0; }
+
+/* Las luces cambian de intensidad, no de sitio. */
+.garage-luz { transition: opacity var(--t-lento) var(--curva-entrada); }
+
+/*
+ * Al entrar, las lámparas prenden una tras otra con el parpadeo de un tubo
+ * que arranca. Es la cascada de siempre —lo que llega después se lee como
+ * siguiente— contada con luz en vez de con posición.
+ */
+@keyframes garage-encender {
+  0%   { opacity: 0 }
+  9%   { opacity: 0.75 }
+  16%  { opacity: 0.08 }
+  30%  { opacity: 0.9 }
+  38%  { opacity: 0.4 }
+  56%, 100% { opacity: 1 }
+}
+.garage-enciende {
+  animation: garage-encender 820ms linear var(--espera, 0ms) backwards;
+}
+@keyframes garage-llegar {
+  from { opacity: 0; transform: translate3d(0, 10px, 0); }
+  to   { opacity: 1; transform: none; }
+}
+.garage-llega {
+  animation: garage-llegar var(--t-lento) var(--curva-entrada) var(--espera, 0ms) backwards;
+}
+
+/* La unidad acusa el cursor: se levanta un pelo de su sitio. */
+.garage-auto {
+  transition: opacity var(--t-lento) var(--curva-entrada);
+  outline: none;
+  cursor: pointer;
+}
+.garage-sube { transition: transform var(--t-medio) var(--curva-mando); }
+.garage-auto:hover .garage-sube,
+.garage-auto:focus-visible .garage-sube { transform: translate3d(0, -6px, 0) scale(1.015); }
+.garage-auto:focus-visible .garage-foco { opacity: 1; }
+.garage-foco {
+  opacity: 0;
+  transition: opacity var(--t-rapido) var(--curva-entrada);
+}
+
+/* El anillo de la unidad elegida gira despacio: dice "esta está viva". */
+@keyframes garage-girar { to { transform: rotate(360deg); } }
+.garage-giro { animation: garage-girar 26s linear infinite; }
+
+.garage-placa {
+  transition: opacity var(--t-medio) var(--curva-entrada), transform var(--t-medio) var(--curva-entrada);
+}
+
+/*
+ * La viñeta va ENCIMA del mundo y fuera de él: oscurece las orillas de la
+ * pantalla, no las del garage. Dentro del 3D se movería con la cámara y
+ * dejaría de ser un marco.
+ */
+.garage-vineta {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(ellipse 75% 70% at 50% 55%, transparent 40%, rgba(6, 6, 7, 0.82) 100%),
+    linear-gradient(to bottom, rgba(6, 6, 7, 0.92), transparent 16%, transparent 84%, rgba(6, 6, 7, 0.9));
+}
+
+/*
+ * Lo que flota sobre el garage: cabecera, fichas, salida.
+ *
+ * No se montan y desmontan: se quedan y cambian de estado. Montándolas, la
+ * ficha aparecería bien pero al salir desaparecería de golpe —React la quita
+ * antes de que pueda irse— y la cámara se alejaría de una pantalla que ya
+ * quedó vacía. Entra con retardo, cuando la cámara ya va en camino; sale sin
+ * él y más rápido, porque lo que se va no merece que lo esperen.
+ */
+.garage-capa {
+  transition:
+    transform var(--t-lento) var(--curva-entrada) var(--retardo, 0ms),
+    opacity var(--t-medio) var(--curva-entrada) var(--retardo, 0ms);
+}
+.garage-capa[data-abierta='false'] {
+  opacity: 0;
+  pointer-events: none;
+  transform: translate3d(var(--fuera-x, 0px), var(--fuera-y, 0px), 0);
+  transition-duration: var(--t-rapido);
+  transition-timing-function: var(--curva-salida);
+  transition-delay: 0ms;
 }

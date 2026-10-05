@@ -103,6 +103,145 @@ endpoint y no creando la ruta y luego cada parada, porque a medio camino
 quedaría un viaje incompleto y porque el alta normal de una parada le suma sus
 km a la ruta — aquí el total ya viene del recorrido real y sumarlo lo duplicaría.
 
+## El movimiento es parte del diseño, no un adorno encima
+
+Tres curvas y cinco tiempos en `globals.css`, y de ahí sale todo. Lo que
+separa una interfaz cara de una animada es que todo se mueva con el MISMO
+acento: doce curvas distintas se leen como doce manos distintas.
+
+- **entrada** `cubic-bezier(0.16, 1, 0.30, 1)` — lo que llega. Arranca rápido y
+  frena largo. Es la curva que el ojo lee como pesado y bien hecho: la masa no
+  aparece, se posa.
+- **salida** — lo que se va. Al revés. Lo que desaparece no merece que lo
+  esperes.
+- **mando** — el cambio de estado. Se pasa un pelo y regresa. **No rebota**: un
+  rebote es simpático, y esto no quiere ser simpático.
+
+Los tiempos suben en pasos de ~1.6×, que es el salto mínimo para distinguir dos
+duraciones. Y hay un techo: **320 ms es lo más lento que puede tardar algo que
+se hace cien veces al día.**
+
+**Solo se animan `transform` y `opacity`.** Son las dos que el compositor
+resuelve sin rehacer el layout. Animar `height`, `width` o `top` obliga al
+navegador a recalcular la página sesenta veces por segundo, y ahí es donde una
+interfaz bonita se vuelve una que se atora. Por eso `Barra` crece con `scaleX`
+y no con el ancho.
+
+`prefers-reduced-motion` apaga todo con una duración de casi cero, no con
+`animation: none`: hay animaciones de las que depende un `animationend` para
+limpiar estado, y apagarlas de golpe deja la pantalla a medio armar.
+
+### La ceremonia vive en el umbral
+
+`/login` tarda 1.7 s en armarse: la marca, la regla que se traza, tres
+renglones que se teclean, las cuatro escuadras del marco. Se entra una vez cada
+treinta días —lo que dura la sesión— y es el momento de que el sistema se
+presente.
+
+Todo lo demás corre a 320 ms. Un cambio de pantalla pasa cincuenta veces al
+día, y a la tercera una animación de medio segundo deja de ser elegante.
+
+**La ceremonia nunca retrasa el trabajo**: el campo de la contraseña tiene el
+foco desde el primer frame y acepta teclas mientras el resto todavía se arma.
+Quien ya sabe su contraseña entra antes de que termine la animación — y esa es
+la prueba de que el adorno no estorba.
+
+### La cascada es jerarquía, no decoración
+
+`.cascada` escalona a sus hijos 45 ms. Es Gestalt aplicado al tiempo: lo que se
+mueve junto se lee como grupo (destino común), y lo que se mueve DESPUÉS se lee
+como subordinado. Una cascada bien ordenada explica la jerarquía de una
+pantalla sin dibujar una sola línea.
+
+Se topa en el doceavo hijo. Con ochenta rutas, un escalón por fila dejaría la
+última entrando tres segundos y medio tarde.
+
+`Escena` envuelve cada pantalla con `key` en el `pathname`: sin la `key`, React
+reutiliza el DOM, la clase ya está puesta y no se ve nada — el error clásico de
+animar navegaciones en el App Router. **Ojo:** eso metió un nivel entre
+`.lienzo` y las páginas de mapa, así que `.lienzo:has(...)` perdió su `>`.
+
+### Las cifras cuentan
+
+`<Cifra>` anima de un valor al otro con rAF. No es adorno: un total que aparece
+puesto es un dato; uno que sube hasta su sitio es un dato que se está
+calculando. Y cuando cambia después —se registró un cobro— cuenta desde el
+anterior, así que ver el número recorrer la distancia ES la noticia.
+
+El servidor pinta el valor final, para que sin JavaScript no salgan ceros.
+
+El formato va **por nombre** (`formato="mxn"`), no como función: `Cifra` es de
+cliente y casi siempre la pinta una pantalla de servidor, y Next no deja pasar
+funciones de un lado al otro. Con `formato={mxn}` el tablero entero respondía
+500 — y en `/laboratorio`, que es todo de cliente, no se notaba.
+
+Su limpieza guarda **dónde se quedó, no a dónde iba**, y `estrenando` solo se
+apaga al llegar. En desarrollo React monta dos veces a propósito: si la
+limpieza anotara el destino, la segunda pasada arrancaría en la meta y la cifra
+no contaría nunca en desarrollo y sí en producción — la peor clase de error.
+
+### `/laboratorio`
+
+El banco de pruebas del movimiento, con datos inventados y fuera de `(app)`
+—ahí el cascarón consulta la base—. Cada pieza que se anime aparece ahí primero.
+
+**No corras `npm run build` con `npm run dev` encendido.** La compilación de
+producción pisa el `.next` del servidor de desarrollo y este empieza a
+responder 500 con los chunks en 404. Se ve como una app que dejó de hidratar
+sin ningún error en consola.
+
+**Ni dos `npm run dev` a la vez.** El segundo arranca sin quejarse en el puerto
+3001 y los dos escriben el mismo `.next`: se pisan los archivos compilados y la
+página recarga pedazos a medias —imágenes y estilos que entran y salen—. Se
+arregla igual: parar los dos, `rm -rf .next` y levantar uno.
+
+## La flotilla es un garage
+
+`/flotilla` no es una lista de tarjetas: es un lugar. Las unidades están en
+fila, cada una bajo su lámpara, y elegir una no abre una ficha que tape —la
+cámara vuela hasta ella y sus cifras entran en vidrio por los dos lados—. Se
+sigue viendo de qué camioneta se habla mientras se lee cuánto dejó.
+
+**Es CSS 3D, no WebGL.** Piso, techo, muro, columnas y unidades viven a
+distinta profundidad dentro de un `preserve-3d` (`Garage.tsx`), y al mover la
+cámara se desplazan unos contra otros. Así todo sigue siendo `transform` y
+`opacity`, no entra un motor de medio mega para una sola pantalla, y las
+unidades son los mismos PNG de `public/img/unidades`.
+
+**Las unidades son fotos, no modelos**, y eso manda sobre la cámara: se
+acerca, se desliza y cabecea, pero no rodea a la unidad —una foto de canto es
+una raya—. Para girarlas haría falta un `.glb` por unidad y ahí sí WebGL.
+
+La cámara son **tres ejes anidados**, uno por motivo: el de fuera se acerca
+(transición), el de en medio gira con el cursor (cuadro a cuadro, porque
+persigue un blanco que se mueve) y el de dentro se desliza de una unidad a
+otra (transición). En un solo `transform`, el giro del cursor pisaría el vuelo.
+
+El vuelo dura **760 ms**, arriba del techo de 320. Es la segunda excepción
+junto con el login y por otra razón: no es un cambio de estado sino un
+traslado, y el ojo tiene que poder seguirlo para entender que sigue en el
+mismo sitio. Se interrumpe con otro clic o con Esc y retoma desde donde iba.
+
+Cosas que no son obvias y costaron:
+
+- **`P` en `Garage.tsx` y `perspective` en `.garage` son el mismo número.** De
+  él sale cuánto hay que acercar el mundo para verlo a cierta escala
+  (`s = P / (P − z)`); si no coinciden, el encuadre se va de sitio.
+- **El piso es translúcido a propósito.** El reflejo es la unidad volteada
+  DEBAJO del piso; con el piso opaco el navegador la tapa, como debe.
+- **Lo que anima `transform` no puede ser la misma caja que tiene la
+  profundidad.** La animación pisa el `translateZ` mientras dura y la pieza
+  nace en otro plano para saltar luego al suyo. La entrada va un nivel adentro.
+- **`sueloUnidad()`** dice a qué altura de cada PNG pisan las llantas. Cada
+  render trae distinto aire debajo y sin ese número la unidad flota. Al
+  agregar un render hay que medirlo (canal alfa) y anotarlo en `imagenes.ts`.
+- **Las fichas no se desmontan al salir**: cambian de estado (`.garage-capa`)
+  y se van deslizando. Por eso guardan la ÚLTIMA unidad mirada y no la
+  elegida, o se vaciarían justo al empezar a irse. Van `inert` mientras tanto.
+- Si la fila no cabe —teléfono, o más unidades que pantalla— no se encoge
+  hasta volverlas estampillas: se queda a un tamaño que se lee y se recorre
+  con flechas, arrastrando o con ← →.
+
 ## Dos roles, una app
 
 El chofer entra a la misma app, no a otra. La cookie ya traía `rol` desde el

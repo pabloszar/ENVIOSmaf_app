@@ -7,6 +7,7 @@ import { mxn } from '@/lib/pricing';
 import { fechaCorta } from '@/lib/fechas';
 import { METODOS, METODO_INFO, type Metodo } from '@/lib/cobro';
 import type { MisionChofer } from '@/types';
+import { encoger } from '@/components/Evidencias';
 
 /**
  * Las misiones del día.
@@ -128,7 +129,10 @@ export default function Misiones({ nombre, misiones }: {
                   onCobrar={() => { setError(null); setCobrando(m); }}
                   onFoto={async (archivo) => {
                     const form = new FormData();
-                    form.append('archivo', archivo);
+                    // La misma reducción que en el panel: de 4 MB a ~200 KB. Sin
+                    // ella cada foto de la calle se guardaba entera, y el GB del
+                    // plan gratuito se llenaba en unas 300 entregas.
+                    form.append('archivo', await encoger(archivo));
                     form.append('envio_id', m.envio_id);
                     await pedir('/api/chofer/evidencia', { method: 'POST', body: form }, m.envio_id);
                   }} />

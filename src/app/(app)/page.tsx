@@ -228,8 +228,10 @@ export default async function Rentabilidad({
         </div>
       </div>
 
-      {/* Mosaico: una cifra protagonista y cuatro que la explican. */}
-      <section className="grid gap-4 lg:grid-cols-3">
+      {/* Mosaico: una cifra protagonista y cuatro que la explican.
+          Entra en cascada, y el orden de la cascada ES la jerarquía: primero
+          el margen, que es la respuesta, y detrás las cuatro que la explican. */}
+      <section className="cascada grid gap-4 lg:grid-cols-3">
         <div className="tarjeta relative flex flex-col justify-between overflow-hidden lg:row-span-3">
           <span aria-hidden className="halo -right-16 -top-20 h-56 w-56"
             style={{ background: 'radial-gradient(circle, rgba(215,240,0,0.16), transparent 70%)' }} />
@@ -254,22 +256,23 @@ export default async function Rentabilidad({
           </div>
         </div>
 
-        <Indicador etiqueta="Venta" valor={mxn(hoy.ingreso)} halo="teal"
+        <Indicador etiqueta="Venta" numero={hoy.ingreso} halo="teal"
           detalle={<Comparativo actual={hoy.ingreso} anterior={antes?.ingreso ?? null} />} />
-        <Indicador etiqueta="Cobrado" valor={cobro ? mxn(cobro.cobrado) : '—'}
+        <Indicador etiqueta="Cobrado"
+          numero={cobro ? cobro.cobrado : undefined} valor="—"
           tono={cobro && cobro.porCobrar > 0 ? 'aviso' : undefined}
           detalle={cobro
             ? (cobro.porCobrar > 0
                 ? `${mxn(cobro.porCobrar)} siguen por cobrar`
                 : 'todo lo vendido ya entró')
             : 'falta correr fase4.sql'} />
-        <Indicador etiqueta="Utilidad neta" valor={mxn(hoy.utilidadNeta)} halo="naranja"
+        <Indicador etiqueta="Utilidad neta" numero={hoy.utilidadNeta} halo="naranja"
           tono={tonoMargen(hoy.margenNeto)}
           detalle={<Comparativo actual={hoy.utilidadNeta} anterior={antes?.utilidadNeta ?? null} />} />
-        <Indicador etiqueta="Ticket promedio" valor={mxn(hoy.ticket)}
+        <Indicador etiqueta="Ticket promedio" numero={hoy.ticket}
           detalle={<Comparativo actual={hoy.ticket} anterior={antes?.ticket ?? null} />} />
         <Indicador etiqueta="Utilidad por misión"
-          valor={mxn(hoy.paradas > 0 ? hoy.utilidadNeta / hoy.paradas : 0)}
+          numero={hoy.paradas > 0 ? hoy.utilidadNeta / hoy.paradas : 0}
           detalle={`${hoy.paradas} misiones en el periodo`} />
       </section>
 

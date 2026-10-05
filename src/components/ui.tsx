@@ -44,11 +44,22 @@ export function Boton({
     fantasma: 'text-ink-mute hover:bg-surface-raised hover:text-ink',
   }[variante];
   return (
+    /* `pulsable` da el hundido de 0.97 al tocar: el regreso es más lento que
+       la ida, que es lo que lo hace sentir con masa en vez de parpadear. */
     <button
       {...props}
-      className={`rounded-full px-4 py-2 text-sm font-medium transition disabled:opacity-50 ${estilos} ${className}`}
+      className={`pulsable group relative overflow-hidden rounded-full px-4 py-2 text-sm
+        font-medium disabled:opacity-50 ${estilos} ${className}`}
     >
-      {children}
+      {variante === 'primario' && (
+        /* Un solo brillo que cruza, y solo en el primario. Si todos los
+           botones brillaran, ninguno diría "este es el que importa". */
+        <span aria-hidden className="absolute inset-0 -translate-x-full bg-gradient-to-r
+          from-transparent via-white/20 to-transparent transition-transform duration-[620ms]
+          group-enabled:group-hover:translate-x-full"
+          style={{ transitionTimingFunction: 'var(--curva-entrada)' }} />
+      )}
+      <span className="relative">{children}</span>
     </button>
   );
 }
@@ -61,8 +72,8 @@ export function BotonMini({
     <button
       type="button"
       {...props}
-      className={`rounded-full border border-surface-line bg-surface-raised px-3 py-1 text-xs
-        font-medium text-ink-soft transition hover:border-brand hover:text-brand
+      className={`pulsable rounded-full border border-surface-line bg-surface-raised px-3 py-1
+        text-xs font-medium text-ink-soft hover:border-brand hover:text-brand
         disabled:opacity-50 ${className}`}
     />
   );
@@ -79,7 +90,7 @@ export function Chip({
     <button
       type="button"
       {...props}
-      className={`rounded-full border px-3 py-1 text-xs font-medium transition ${estilo} ${className}`}
+      className={`pulsable rounded-full border px-3 py-1 text-xs font-medium ${estilo} ${className}`}
     />
   );
 }
@@ -98,7 +109,10 @@ export function Etiqueta({
   }[tono];
   return (
     <span className={`inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-xs font-medium ${c}`}>
-      <span aria-hidden className="h-1.5 w-1.5 rounded-full bg-current" />
+      {/* Lo activo late; lo demás se queda quieto. Un punto que respira en
+          una fila de doce etiquetas es lo que separa "en curso" de "fue". */}
+      <span aria-hidden
+        className={`h-1.5 w-1.5 rounded-full bg-current ${tono === 'activo' ? 'pulsa' : ''}`} />
       {children}
     </span>
   );
@@ -118,12 +132,12 @@ export function Panel({
   const max = ancho === 'inmersivo' ? 'max-w-3xl' : 'max-w-md';
   return (
     <div className="fixed inset-0 z-[1200] flex justify-end">
-      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onCerrar} />
-      <div className={`relative flex h-full w-full ${max} flex-col border-l border-white/[0.08] bg-surface shadow-panel`}>
+      <div className="velo absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onCerrar} />
+      <div className={`hoja relative flex h-full w-full ${max} flex-col border-l border-white/[0.08] bg-surface shadow-panel`}>
         <div className="flex items-center justify-between border-b border-surface-line px-5 py-4">
           <h2 className="text-sm font-semibold">{titulo}</h2>
           <button onClick={onCerrar}
-            className="rounded-full p-1 text-ink-mute transition hover:bg-surface-raised hover:text-ink"
+            className="pulsable rounded-full p-1 text-ink-mute hover:bg-surface-raised hover:text-ink"
             aria-label="Cerrar">✕</button>
         </div>
         <div className="flex-1 overflow-y-auto p-5">{children}</div>
@@ -168,10 +182,10 @@ export function Modal({
 
   return (
     <div className="fixed inset-0 z-[1200] flex items-start justify-center overflow-y-auto p-4 sm:p-8">
-      <div className="fixed inset-0 bg-black/70 backdrop-blur-sm" onClick={onCerrar} />
+      <div className="velo fixed inset-0 bg-black/70 backdrop-blur-sm" onClick={onCerrar} />
       <div role="dialog" aria-modal="true" aria-label={titulo}
-        className={`relative my-auto w-full ${max} overflow-hidden rounded-2xl border border-white/[0.09]
-          bg-surface/95 shadow-panel backdrop-blur-2xl`}>
+        className={`ventana relative my-auto w-full ${max} overflow-hidden rounded-2xl
+          border border-white/[0.09] bg-surface/95 shadow-panel backdrop-blur-2xl`}>
         <div className="flex items-start justify-between gap-4 border-b border-white/[0.06] px-6 py-5">
           <div>
             <h2 className="text-lg font-medium tracking-tight">{titulo}</h2>
@@ -180,7 +194,7 @@ export function Modal({
           {/* Sin autoFocus: el foco pertenece al primer campo del formulario,
               no al botón de cerrar. */}
           <button onClick={onCerrar}
-            className="-mr-2 -mt-1 rounded-full p-2 text-ink-mute transition hover:bg-white/[0.06] hover:text-ink"
+            className="pulsable -mr-2 -mt-1 rounded-full p-2 text-ink-mute hover:bg-white/[0.06] hover:text-ink"
             aria-label="Cerrar">✕</button>
         </div>
         <div className="px-6 py-5">{children}</div>

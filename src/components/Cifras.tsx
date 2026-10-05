@@ -1,4 +1,5 @@
 import { mxn } from '@/lib/pricing';
+import { Cifra, type Formato } from '@/components/movimiento';
 
 /**
  * Indicador grande. El tono se usa solo cuando el número tiene un significado
@@ -18,13 +19,19 @@ const HALOS = {
 export function Indicador({
   etiqueta,
   valor,
+  numero,
+  formato = 'mxn',
   detalle,
   tono = 'neutro',
   destacado = false,
   halo = 'ninguno',
 }: {
   etiqueta: string;
-  valor: string;
+  /** El texto ya formado. Se usa cuando no hay número que contar ('—'). */
+  valor?: string;
+  /** Si viene, la cifra llega contando en vez de aparecer puesta. */
+  numero?: number;
+  formato?: Formato;
   detalle?: React.ReactNode;
   tono?: 'neutro' | 'bueno' | 'malo' | 'aviso';
   destacado?: boolean;
@@ -38,15 +45,20 @@ export function Indicador({
   const tinte = HALOS[halo];
 
   return (
-    <div className={`tarjeta overflow-hidden ${destacado ? 'border-acento/25' : ''}`}>
+    /* `levanta` es la respuesta al cursor: sube un pelo y el halo se aviva.
+       Dos píxeles bastan — lo que se busca es que la tarjeta acuse el paso del
+       ratón, no que salte. */
+    <div className={`tarjeta levanta overflow-hidden ${destacado ? 'border-acento/25' : ''}`}>
       {tinte && (
-        <span aria-hidden className="halo"
+        <span aria-hidden className="halo halo-vivo"
           style={{ background: `radial-gradient(circle, ${tinte}, transparent 70%)` }} />
       )}
       <div className="relative">
         <p className="etiqueta">{etiqueta}</p>
-        <p className={`cifra mt-2.5 text-[1.75rem] font-medium leading-none tracking-tight ${color}`}>
-          {valor}
+        <p className={`mt-2.5 text-[1.75rem] font-medium leading-none tracking-tight ${color}`}>
+          {numero != null
+            ? <Cifra valor={numero} formato={formato} />
+            : <span className="cifra">{valor}</span>}
         </p>
         {detalle && <p className="mt-2.5 text-xs text-ink-mute">{detalle}</p>}
       </div>

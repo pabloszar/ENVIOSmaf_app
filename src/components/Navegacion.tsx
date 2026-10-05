@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
@@ -65,27 +65,53 @@ export default function Navegacion() {
 function Carril() {
   const ruta = usePathname();
   const salir = useSalir();
+  const { caja, marca } = useMarcaDeslizante(ruta);
 
   return (
     <aside className="fixed inset-y-0 left-0 z-40 hidden w-16 flex-col items-center
       border-r border-white/[0.06] bg-surface/60 py-4 backdrop-blur-xl md:flex">
       <Link href="/" aria-label="Envíos MAF"
-        className="mb-6 flex h-9 w-9 items-center justify-center rounded-xl bg-acento
+        className="pulsable mb-6 flex h-9 w-9 items-center justify-center rounded-xl bg-acento
           text-sm font-bold text-surface-sunk">
         M
       </Link>
 
-      <nav className="flex flex-1 flex-col items-center gap-2">
+      <nav ref={caja} className="relative flex flex-1 flex-col items-center gap-2">
+        {/*
+          La pastilla del activo es UNA, y viaja.
+          Seis pastillas que se prenden y apagan dicen "otra cosa está
+          seleccionada". Una que se desliza dice "es la misma cosa, que se
+          movió" — y de paso el ojo la sigue y aprende dónde quedó, que es
+          continuidad de Gestalt hecha con tiempo en vez de con una línea.
+        */}
+        <span aria-hidden
+          className="pointer-events-none absolute left-1/2 top-0 h-10 w-10 -translate-x-1/2
+            rounded-full bg-ink"
+          style={{
+            transform: `translate3d(-50%, ${marca.y}px, 0)`,
+            opacity: marca.visible ? 1 : 0,
+            transition: marca.estrenando
+              ? 'opacity var(--t-medio) var(--curva-entrada)'
+              : 'transform var(--t-medio) var(--curva-mando), opacity var(--t-rapido) linear',
+          }} />
+
         {SECCIONES.map((s) => {
           const activa = esActiva(s.href, ruta);
           return (
-            <Link key={s.href} href={s.href} aria-current={activa ? 'page' : undefined}
-              className={`group relative flex h-10 w-10 items-center justify-center rounded-full transition ${
+            <Link key={s.href} href={s.href} data-activa={activa || undefined}
+              aria-current={activa ? 'page' : undefined}
+              className={`group relative z-10 flex h-10 w-10 items-center justify-center
+                rounded-full transition-colors duration-200 ${
                 activa
-                  ? 'bg-ink text-surface-sunk'
+                  ? 'text-surface-sunk'
                   : 'text-ink-mute hover:bg-white/[0.06] hover:text-ink'
               }`}>
-              {s.icono}
+              {/* El icono se encoge un pelo al tocarlo. El contenedor no se
+                  toca: mover la caja movería la pastilla que va debajo. */}
+              <span className="transition-transform duration-[200ms] group-active:scale-90"
+                style={{ transitionTimingFunction: 'var(--curva-mando)' }}>
+                {s.icono}
+              </span>
               <Globito>{s.label}</Globito>
             </Link>
           );
@@ -114,13 +140,62 @@ function Carril() {
 
 /** El nombre de un icono del carril, al pasar el cursor. */
 function Globito({ children }: { children: React.ReactNode }) {
+  /* Entra deslizándose desde el icono y no apareciendo en su sitio: así se lee
+     como algo que SALE de ahí, y no como una etiqueta que estaba escondida. */
   return (
-    <span className="pointer-events-none absolute left-full ml-3 whitespace-nowrap rounded-lg
-      border border-white/[0.08] bg-surface-raised px-2.5 py-1 text-xs text-ink opacity-0
-      shadow-panel transition group-hover:opacity-100">
+    <span className="pointer-events-none absolute left-full ml-3 origin-left -translate-x-1.5
+      scale-95 whitespace-nowrap rounded-lg border border-white/[0.08] bg-surface-raised
+      px-2.5 py-1 text-xs text-ink opacity-0 shadow-panel
+      transition-all duration-[200ms] group-hover:translate-x-0 group-hover:scale-100
+      group-hover:opacity-100"
+      style={{ transitionTimingFunction: 'var(--curva-entrada)' }}>
       {children}
     </span>
   );
+}
+
+/**
+ * Dónde tiene que estar la pastilla del activo.
+ *
+ * Se MIDE en vez de calcularse con el alto por el índice. La cuenta
+ * funcionaría hoy y se rompería el día que alguien cambie un `gap` o meta un
+ * separador, y se rompería en silencio: la pastilla quedaría media pulgada
+ * arriba del icono y nadie sabría por qué.
+ *
+ * `estrenando` evita el deslizamiento de la primera vez. Sin eso, al cargar
+ * cualquier pantalla la pastilla saldría volando desde arriba hasta su sitio,
+ * que es llamar la atención sobre la navegación cuando lo que hay que mirar
+ * es el contenido.
+ */
+function useMarcaDeslizante(ruta: string) {
+  const caja = useRef<HTMLElement>(null);
+  const [marca, setMarca] = useState({ y: 0, visible: false, estrenando: true });
+
+  useLayoutEffect(() => {
+    const cont = caja.current;
+    const activa = cont?.querySelector<HTMLElement>('[data-activa]');
+    if (!cont || !activa) {
+      setMarca((m) => ({ ...m, visible: false }));
+      return;
+    }
+    // `offsetTop` ya es relativo al contenedor: es `position: relative`.
+    setMarca((m) => ({
+      y: activa.offsetTop,
+      visible: true,
+      // Deja de estrenar en cuanto ya se pintó una vez con la pastilla puesta.
+      estrenando: m.visible ? false : m.estrenando,
+    }));
+  }, [ruta]);
+
+  // El segundo render apaga el estreno, para que el SIGUIENTE cambio de
+  // sección sí se deslice.
+  useEffect(() => {
+    if (!marca.visible || !marca.estrenando) return;
+    const id = requestAnimationFrame(() => setMarca((m) => ({ ...m, estrenando: false })));
+    return () => cancelAnimationFrame(id);
+  }, [marca.visible, marca.estrenando]);
+
+  return { caja, marca };
 }
 
 /* ══════════════════════════════════════════════════════════════════════════
