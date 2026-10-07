@@ -206,7 +206,8 @@ sigue viendo de qué camioneta se habla mientras se lee cuánto dejó.
 distinta profundidad dentro de un `preserve-3d` (`Garage.tsx`), y al mover la
 cámara se desplazan unos contra otros. Así todo sigue siendo `transform` y
 `opacity`, no entra un motor de medio mega para una sola pantalla, y las
-unidades son los mismos PNG de `public/img/unidades`.
+unidades son los mismos PNG de `public/img/unidades`. Lo que se mueve es CSS; lo que se
+VE es casi todo lienzo, por lo de la memoria de video que se explica abajo.
 
 **Las unidades son fotos, no modelos**, y eso manda sobre la cámara: se
 acerca, se desliza y cabecea, pero no rodea a la unidad —una foto de canto es
@@ -238,6 +239,28 @@ Cosas que no son obvias y costaron:
 - **Las fichas no se desmontan al salir**: cambian de estado (`.garage-capa`)
   y se van deslizando. Por eso guardan la ÚLTIMA unidad mirada y no la
   elegida, o se vaciarían justo al empezar a irse. Van `inert` mientras tanto.
+- **Ninguna pieza cruza a otra.** Dos hojas que se cruzan —el resplandor
+  vertical con el disco acostado, una foto cuyo aire baja del piso— el
+  navegador las parte por el cruce y ordena los pedazos según el ángulo; al
+  girar la mirada ese orden cambia de cuadro a cuadro y parpadea. Cada pieza
+  vive en su profundidad y termina un par de píxeles antes de la de enfrente.
+- **Casi todo es `<canvas>`, no cajas con degradados** (`Lienzo`, `Luz`,
+  `Foto` en `Garage.tsx`). Cada pieza de un mundo 3D es una textura en la
+  tarjeta de video. A una caja normal el navegador le escoge la resolución
+  según cómo se vea, la parte en baldosas y la redibuja cuando cambia de
+  tamaño —aquí, en cada cuadro—. Con piso, muro y techo de miles de píxeles,
+  en una pantalla de doble densidad eso rebasaba la memoria de video y el
+  navegador tiraba baldosas: camionetas a medias, lámparas sin disco, la
+  madera cortada en rectángulos, y solo mientras algo se movía. Un lienzo
+  mide lo que dice, se pinta una vez y la tarjeta solo lo coloca.
+  "Dibujar chico y estirar" con CSS NO sirve: el navegador calcula la
+  resolución por cómo se ve en pantalla y deshace el truco.
+- **El piso no pasa por debajo de la cámara** (`FRENTE`), y el acercamiento
+  tiene tope en 1.5. Una hoja pegada al ojo se agranda sin límite.
+- **Cómo se prueba esto:** Chrome con `--force-gpu-mem-available-mb=128` y el
+  cursor moviéndose. Con memoria de sobra —cualquier Chrome sin ventana, o
+  una máquina holgada— el problema no aparece y todo parece estar bien. Así
+  pasó: tres arreglos seguidos "verificados" que no arreglaban nada.
 - Si la fila no cabe —teléfono, o más unidades que pantalla— no se encoge
   hasta volverlas estampillas: se queda a un tamaño que se lee y se recorre
   con flechas, arrastrando o con ← →.

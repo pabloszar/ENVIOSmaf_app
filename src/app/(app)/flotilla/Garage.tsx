@@ -1,6 +1,5 @@
 'use client';
 
-import Image from 'next/image';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { renderUnidad, sueloUnidad } from '@/lib/imagenes';
 import { useSinMovimiento } from '@/components/movimiento';
@@ -39,7 +38,13 @@ const TECHO = 760;
 const LAMPARA = 560;
 /** El muro del fondo y la orilla de enfrente, medidos desde la fila. */
 const FONDO = -620;
-const FRENTE = 760;
+/*
+ * El piso termina aquí y se funde a negro; NO llega hasta debajo de la
+ * cámara. De cerca la cámara queda a unos 530 de la fila: con el piso
+ * llegando a 760 le pasaba por debajo y por detrás, y una hoja pegada al ojo
+ * se agranda tanto que el navegador pide una textura enorme para ella.
+ */
+const FRENTE = 340;
 const HONDO = FRENTE - FONDO;
 const CENTRO_Z = (FRENTE + FONDO) / 2;
 /** Cuánto mira hacia abajo la cámara, en grados. De lejos más, de cerca menos. */
@@ -78,7 +83,8 @@ function encuadre(ancho: number, alto: number, n: number, elegida: number, foco:
   if (elegida >= 0) {
     if (escritorio) {
       // Lo que dejan libre las dos fichas de los lados.
-      const s = limitar((ancho - 2 * 372) / ANCHO_AUTO, 0.95, 1.7);
+      // Tope en 1.5: más cerca, la orilla del piso queda encima de la cámara.
+      const s = limitar((ancho - 2 * 372) / ANCHO_AUTO, 0.95, 1.5);
       return { x: xDe(elegida), y: -128, s, cabe: true };
     }
     // En el teléfono la ficha sube desde abajo: la unidad se va al tercio alto.
@@ -187,7 +193,15 @@ export default function Garage({
     despertar();
   }, [iElegida, quieto, despertar, pintar]);
 
-  useEffect(() => () => cancelAnimationFrame(cuadro.current), []);
+  /*
+   * Al desmontar se cancela el cuadro pendiente Y se anota que ya no hay
+   * ninguno. Sin lo segundo la mirada no volvía a moverse jamás: en
+   * desarrollo React monta dos veces, la limpieza de la primera cancelaba la
+   * animación pero dejaba puesta la marca de "ya voy corriendo", y
+   * `despertar` —que no arranca dos veces— se quedaba esperando a alguien
+   * que no iba a llegar.
+   */
+  useEffect(() => () => { cancelAnimationFrame(cuadro.current); cuadro.current = 0; }, []);
 
   function seguirCursor(e: React.PointerEvent) {
     if (quieto || e.pointerType !== 'mouse' || !escenario.current) return;
@@ -244,10 +258,12 @@ export default function Garage({
   const fueArrastre = () => !!arrastre.current?.fue;
 
   /* ── El mundo ── */
-  const ANCHO_MUNDO = Math.max(n, 1) * BAHIA + 4400;
+  /*
+   * Lo justo para que no se le vea la orilla al muro, y ni un píxel más: cada
+   * plano es una textura en la tarjeta de video y su ancho se paga en megas.
+   */
+  const ANCHO_MUNDO = Math.max(n, 1) * BAHIA + 3600;
   const xDe = (i: number) => (i - (n - 1) / 2) * BAHIA;
-  /** De coordenadas del mundo a las de la hoja del piso y a las del techo. */
-  const enPiso = (x: number, z: number) => ({ left: x + ANCHO_MUNDO / 2, top: z - CENTRO_Z + HONDO / 2 });
 
   const estadoDe = (u: UnidadGarage): Estado =>
     elegida ? (u.id === elegida ? 'elegida' : 'atenuada') : sobre === u.id ? 'sobre' : 'normal';
@@ -267,177 +283,126 @@ export default function Garage({
           <div className={`garage-eje ${vuela}`}
             style={{ transform: `translate3d(${(-cam.x).toFixed(1)}px, ${(-cam.y).toFixed(1)}px, 0)` }}>
 
-            {/* ── Muro del fondo ── */}
-            <div className="garage-pieza" style={{
-              left: -ANCHO_MUNDO / 2, top: -TECHO, width: ANCHO_MUNDO, height: TECHO,
-              transform: `translateZ(${FONDO}px)`,
-              background: 'linear-gradient(to bottom, #070708, #0d0d10 45%, #131316 80%, #0b0b0d)',
-            }}>
-              {unidades.map((u, i) => (
-                /* Paneles de madera detrás de cada cajón, encendidos por su
-                   lámpara. Es lo único cálido de la escena y por eso es lo
-                   que dice dónde hay una unidad aun con todo lo demás negro. */
-                <div key={u.id} className="garage-pieza garage-enciende"
-                  style={{ left: xDe(i) + ANCHO_MUNDO / 2 - 210, top: TECHO - 440, width: 420, height: 440,
-                    '--espera': `${260 + i * 110}ms` } as React.CSSProperties}>
-                  <div className="garage-luz h-full w-full" style={{
-                    opacity: brilloDe(u) * 0.75,
-                    background: 'repeating-linear-gradient(90deg, rgba(204,126,62,0.62) 0 9px, rgba(38,20,9,0.9) 9px 13px)',
-                    WebkitMaskImage: 'radial-gradient(ellipse 62% 78% at 50% 42%, #000 18%, transparent 74%)',
-                    maskImage: 'radial-gradient(ellipse 62% 78% at 50% 42%, #000 18%, transparent 74%)',
-                  }} />
-                </div>
-              ))}
-            </div>
+            {/* ── Muro, piso y techo ──
+                Tres lienzos y no tres cajas con degradados: ver `Lienzo`. */}
+            <Lienzo w={4} h={190} clave="muro" pinta={pintaMuro} className="garage-pieza"
+              style={{ left: -ANCHO_MUNDO / 2, top: -TECHO + 1, width: ANCHO_MUNDO, height: TECHO - 2,
+                transform: `translateZ(${FONDO}px)` }} />
 
-            {/* ── Piso ──
-                Va un poco translúcido a propósito: debajo de él está el
-                reflejo de cada unidad, que es la unidad misma volteada. Con
-                el piso opaco no se vería; así se ve como en un concreto
-                pulido. Las juntas no son adorno: son las líneas que fugan
-                al fondo y le dicen al ojo que esto tiene profundidad. */}
-            <div className="garage-pieza" style={{
-              left: -ANCHO_MUNDO / 2, top: -HONDO / 2, width: ANCHO_MUNDO, height: HONDO,
-              transform: `translateZ(${CENTRO_Z}px) rotateX(90deg)`,
-              background: [
-                'repeating-linear-gradient(90deg, transparent 0 269px, rgba(255,255,255,0.04) 269px 270px)',
-                'repeating-linear-gradient(0deg, transparent 0 259px, rgba(255,255,255,0.035) 259px 260px)',
-                'linear-gradient(to bottom, rgba(8,8,10,0.86), rgba(19,19,23,0.74))',
-              ].join(', '),
-            }}>
-              {unidades.map((u, i) => {
-                const e = estadoDe(u);
-                const c = enPiso(xDe(i), 0);
-                return (
-                  <div key={u.id}>
-                    {/* El charco de luz. */}
-                    <div className="garage-pieza garage-enciende"
-                      style={{ left: c.left - 330, top: c.top - 300, width: 660, height: 600,
-                        '--espera': `${200 + i * 110}ms` } as React.CSSProperties}>
-                      <div className="garage-luz h-full w-full rounded-full" style={{
-                        opacity: brilloDe(u),
-                        background: 'radial-gradient(closest-side, rgba(255,250,240,0.26), rgba(255,250,240,0.07) 55%, transparent)',
-                      }} />
-                    </div>
-                    {/* La sombra de contacto: lo que pega la unidad al piso. */}
-                    <div className="garage-pieza rounded-full" style={{
-                      left: c.left - 215, top: c.top - 78, width: 430, height: 170,
-                      background: 'radial-gradient(closest-side, rgba(0,0,0,0.9), rgba(0,0,0,0.55) 55%, transparent)',
-                    }} />
-                    {/* El anillo del cajón. Lima solo en la elegida: el lima
-                        marca lo activo y nada más, aquí también. */}
-                    <div className="garage-pieza garage-luz rounded-full"
-                      style={{ left: c.left - 262, top: c.top - 250, width: 524, height: 500,
-                        border: `2px solid ${e === 'elegida' ? 'rgba(215,240,0,0.55)' : 'rgba(255,255,255,0.13)'}`,
-                        opacity: e === 'atenuada' ? 0.15 : 1 }}>
-                      {e === 'elegida' && (
-                        <span className="garage-giro absolute -inset-[14px] rounded-full"
-                          style={{ border: '2px dashed rgba(215,240,0,0.35)' }} />
-                      )}
-                    </div>
-                    {/* El número pintado en el piso. */}
-                    <span className="garage-pieza cifra text-center font-bold leading-none"
-                      style={{ ...enPiso(xDe(i) - 140, 250), width: 280, fontSize: 150,
-                        color: `rgba(255,255,255,${e === 'atenuada' ? 0.02 : 0.055})` }}>
-                      {String(i + 1).padStart(2, '0')}
-                    </span>
-                  </div>
-                );
-              })}
-              {/* Las rayas entre cajones. */}
-              {Array.from({ length: n + 1 }, (_, i) => (
-                <span key={i} className="garage-pieza"
-                  style={{ ...enPiso(xDe(i) - BAHIA / 2 - 1.5, -260), width: 3, height: 600,
-                    background: 'linear-gradient(to bottom, transparent, rgba(255,255,255,0.1) 30%, rgba(255,255,255,0.1))' }} />
-              ))}
-            </div>
+            {/* El piso va un poco translúcido a propósito: debajo de él está
+                el reflejo de cada unidad, que es la unidad misma volteada.
+                Con el piso opaco no se vería; así se ve como en un concreto
+                pulido. Las juntas no son adorno: son las líneas que fugan al
+                fondo y le dicen al ojo que esto tiene profundidad. Lleva
+                pintado todo lo que no cambia: juntas, rayas de cajón,
+                números y la sombra de contacto de cada unidad. */}
+            <Lienzo w={Math.round(ANCHO_MUNDO / 2)} h={Math.round(HONDO / 2)} clave={`piso-${n}`}
+              pinta={(c, w, h) => pintaPiso(c, w, h, n, ANCHO_MUNDO)}
+              className="garage-pieza cifra"
+              style={{ left: -ANCHO_MUNDO / 2, top: -HONDO / 2, width: ANCHO_MUNDO, height: HONDO,
+                transform: `translateZ(${CENTRO_Z}px) rotateX(90deg)` }} />
 
-            {/* ── Techo ── */}
-            <div className="garage-pieza" style={{
-              left: -ANCHO_MUNDO / 2, top: -TECHO - HONDO / 2, width: ANCHO_MUNDO, height: HONDO,
-              transform: `translateZ(${CENTRO_Z}px) rotateX(-90deg)`,
-              background: [
-                'repeating-linear-gradient(90deg, transparent 0 176px, rgba(255,255,255,0.05) 176px 178px, rgba(0,0,0,0.7) 178px 196px)',
-                'repeating-linear-gradient(0deg, transparent 0 338px, rgba(255,255,255,0.035) 338px 340px)',
-                'linear-gradient(#070708, #070708)',
-              ].join(', '),
-            }}>
-            </div>
+            <Lienzo w={Math.round(ANCHO_MUNDO / 4)} h={Math.round(HONDO / 4)} clave={`techo-${n}`} pinta={pintaTecho}
+              className="garage-pieza"
+              style={{ left: -ANCHO_MUNDO / 2, top: -TECHO - HONDO / 2, width: ANCHO_MUNDO, height: HONDO,
+                transform: `translateZ(${CENTRO_Z}px) rotateX(-90deg)` }} />
 
             {/* ── Columnas ──
                 Están a medio camino entre la fila y el muro, y eso es todo
                 su trabajo: al deslizar la cámara se mueven a otra velocidad
                 que lo de adelante y lo de atrás. */}
             {Array.from({ length: n + 1 }, (_, i) => (
-              <div key={i} className="garage-pieza" style={{
-                left: xDe(i) - BAHIA / 2 - 22, top: -TECHO, width: 44, height: TECHO,
+              <div key={i} className="garage-pieza garage-fija" style={{
+                left: xDe(i) - BAHIA / 2 - 22, top: -TECHO + 1, width: 44, height: TECHO - 2,
                 transform: 'translateZ(-330px)',
                 background: 'linear-gradient(90deg, #19191d, #0c0c0e 55%, #151518)',
                 boxShadow: 'inset 1px 0 0 rgba(255,255,255,0.05)',
               }} />
             ))}
 
-            {/* ── Las unidades ── */}
+            {/* ── Los cajones ── */}
             {unidades.map((u, i) => {
               const e = estadoDe(u);
+              const brillo = brilloDe(u);
               const render = renderUnidad(u.nombre);
               const suelo = sueloUnidad(render ? u.nombre : null);
-              const arriba = -ALTO_AUTO * suelo;
               const espera = { '--espera': `${200 + i * 110}ms` } as React.CSSProperties;
               return (
                 <div key={u.id} className="garage-pieza" style={{ transform: `translate3d(${xDe(i)}px, 0, 0)`, transformStyle: 'preserve-3d' }}>
-                  {/* El haz. Detrás de la unidad, del disco al piso. */}
-                  <div className="garage-pieza garage-enciende"
-                    style={{ left: -330, top: -LAMPARA, width: 660, height: LAMPARA, transform: 'translateZ(-24px)', ...espera }}>
-                    <div className="garage-luz h-full w-full" style={{
-                      opacity: brilloDe(u),
-                      clipPath: 'polygon(31% 0, 69% 0, 100% 100%, 0 100%)',
-                      background: 'linear-gradient(to bottom, rgba(255,250,240,0.22), rgba(255,250,240,0.06) 50%, transparent 97%)',
-                    }} />
+                  {/*
+                    * Ninguna de estas piezas toca a otra, y es a propósito.
+                    *
+                    * Cuando dos hojas se cruzan —el resplandor vertical con el
+                    * disco acostado, la foto con el piso— el navegador las
+                    * parte por la línea del cruce y ordena los pedazos según
+                    * el ángulo. Al girar la mirada ese orden cambia de un
+                    * cuadro al siguiente. Por eso cada una vive en su propia
+                    * profundidad: lo que va sobre el piso flota un píxel
+                    * encima, lo que va sobre el muro un píxel delante.
+                    */}
+
+                  {/* Paneles de madera en el muro, encendidos por su lámpara.
+                      Es lo único cálido de la escena y por eso es lo que dice
+                      dónde hay una unidad aun con todo lo demás negro. */}
+                  <Luz espera={`${260 + i * 110}ms`} nivel={brillo * 0.75} w={210} h={220} pinta={pintaMadera}
+                    style={{ left: -210, top: -440, width: 420, height: 440, transform: `translateZ(${FONDO + 1}px)` }} />
+
+                  {/* El charco de luz, acostado sobre el piso. */}
+                  <Luz espera={`${200 + i * 110}ms`} nivel={brillo} w={220} h={200} pinta={pintaCharco}
+                    style={{ left: -330, top: -300, width: 660, height: 600, transform: 'translate3d(0, -1px, 0) rotateX(90deg)' }} />
+
+                  {/* El anillo del cajón. Son dos, uno encima del otro, y se
+                      cruzan por opacidad: blanco mientras nadie lo elige y
+                      lima cuando sí —el lima marca lo activo y nada más, aquí
+                      también—. El de rayas gira despacio: "esta está viva". */}
+                  <Lienzo w={520} h={520} clave="anillo" pinta={(c, w) => pintaAnillo(c, w, 'rgba(255,255,255,0.14)', false)}
+                    className="garage-pieza garage-luz"
+                    style={{ left: -260, top: -260, width: 520, height: 520, transform: 'translate3d(0, -2px, 0) rotateX(90deg)',
+                      opacity: e === 'elegida' ? 0 : e === 'atenuada' ? 0.15 : 1 }} />
+                  <div className="garage-pieza garage-luz" style={{ left: -276, top: -276, width: 552, height: 552,
+                    transform: 'translate3d(0, -3px, 0) rotateX(90deg)', opacity: e === 'elegida' ? 1 : 0 }}>
+                    <Lienzo w={552} h={552} clave="anillo-lima" pinta={(c, w) => pintaAnillo(c, w, 'rgba(215,240,0,0.6)', false, 260)}
+                      className="absolute inset-0 h-full w-full" />
+                    <Lienzo w={552} h={552} clave="anillo-rayas" pinta={(c, w) => pintaAnillo(c, w, 'rgba(215,240,0,0.4)', true, 274)}
+                      className={`absolute inset-0 h-full w-full ${e === 'elegida' ? 'garage-giro' : ''}`} />
                   </div>
+
+                  {/* El haz. Detrás de la unidad, del disco al piso. */}
+                  <Luz espera={`${200 + i * 110}ms`} nivel={brillo} w={330} h={278} pinta={pintaHaz}
+                    style={{ left: -330, top: -LAMPARA + 2, width: 660, height: LAMPARA - 3, transform: 'translateZ(-24px)' }} />
 
                   {/* La lámpara: un disco colgado de su cable, como los del
                       garage de referencia y los del dibujo. Va acostado —es
                       una hoja horizontal— y por eso se ve como una elipse que
                       se abre o se cierra según desde dónde se mire. */}
-                  <span className="garage-pieza" style={{ left: -1, top: -TECHO, width: 2, height: TECHO - LAMPARA,
+                  <span className="garage-pieza garage-fija" style={{ left: -1, top: -TECHO + 1, width: 2, height: TECHO - LAMPARA - 4,
                     background: 'rgba(255,255,255,0.14)' }} />
-                  <div className="garage-pieza garage-enciende"
-                    style={{ left: -125, top: -LAMPARA - 125, width: 250, height: 250, transform: 'rotateX(-90deg)', ...espera }}>
-                    <div className="garage-luz h-full w-full rounded-full" style={{
-                      opacity: brilloDe(u),
-                      background: 'radial-gradient(closest-side, #ffffff 64%, #f3efe6 82%, rgba(243,239,230,0.55))',
-                      boxShadow: '0 0 70px 26px rgba(255,248,235,0.36)',
-                    }} />
-                  </div>
+                  <Luz espera={`${200 + i * 110}ms`} nivel={brillo} w={470} h={470} pinta={pintaDisco}
+                    style={{ left: -235, top: -LAMPARA - 235, width: 470, height: 470, transform: 'rotateX(-90deg)' }} />
                   {/* Su resplandor, de frente a la cámara: el disco solo es
-                      una raya de canto y no alcanza a decir "esto alumbra". */}
-                  <div className="garage-pieza garage-enciende"
-                    style={{ left: -260, top: -LAMPARA - 90, width: 520, height: 200, ...espera }}>
-                    <div className="garage-luz h-full w-full" style={{
-                      opacity: brilloDe(u) * 0.9,
-                      background: 'radial-gradient(closest-side, rgba(255,248,235,0.3), rgba(255,248,235,0.08) 55%, transparent)',
-                    }} />
-                  </div>
+                      una raya de canto y no alcanza a decir "esto alumbra".
+                      Va DETRÁS del disco: en su misma profundidad lo
+                      atravesaba por la mitad. */}
+                  <Luz espera={`${200 + i * 110}ms`} nivel={brillo * 0.9} w={260} h={100} pinta={pintaResplandor}
+                    style={{ left: -260, top: -LAMPARA - 90, width: 520, height: 200, transform: 'translateZ(-250px)' }} />
 
-                  {/* El reflejo: la misma imagen volteada sobre la línea
-                      donde pisan las llantas, debajo del piso. */}
+                  {/* El reflejo: la misma foto volteada sobre la línea donde
+                      pisan las llantas. Su caja empieza DEBAJO del piso. Va a
+                      poca resolución a propósito: es lo que lo desenfoca. */}
                   {render && (
-                    <div aria-hidden className="garage-pieza garage-luz"
-                      style={{ left: -ANCHO_AUTO / 2, top: arriba + 2, width: ANCHO_AUTO, height: ALTO_AUTO,
-                        transformOrigin: `50% ${suelo * 100}%`, transform: 'scaleY(-1)',
-                        opacity: e === 'atenuada' ? 0.1 : 0.85, filter: 'blur(1.2px)',
-                        WebkitMaskImage: `linear-gradient(to bottom, transparent ${(suelo - 0.42) * 100}%, #000 ${suelo * 100}%)`,
-                        maskImage: `linear-gradient(to bottom, transparent ${(suelo - 0.42) * 100}%, #000 ${suelo * 100}%)` }}>
-                      <Image src={render} alt="" fill sizes="460px" className="object-contain" />
-                    </div>
+                    <Foto src={render} w={300} h={Math.round((300 * ALTO_AUTO * 0.5) / ANCHO_AUTO)} suelo={suelo} reflejo
+                      className="garage-pieza garage-luz"
+                      style={{ left: -ANCHO_AUTO / 2, top: 1, width: ANCHO_AUTO, height: ALTO_AUTO * 0.5,
+                        transform: 'translateZ(6px)', opacity: e === 'atenuada' ? 0.1 : 0.8 }} />
                   )}
 
-                  <div className="garage-pieza garage-llega" style={{ left: -ANCHO_AUTO / 2, top: arriba, ...espera,
-                    animationDelay: `${320 + i * 110}ms` }}>
+                  {/* La unidad. Su caja termina justo en la línea del piso
+                      —lo de abajo es aire del PNG— para no cruzarlo. */}
+                  <div className="garage-pieza" style={{ left: -ANCHO_AUTO / 2, top: -ALTO_AUTO * suelo, transform: 'translateZ(6px)' }}>
+                    <div className="garage-llega" style={{ ...espera, animationDelay: `${320 + i * 110}ms` }}>
                     <button type="button" aria-label={`${u.nombre}. ${u.pie}`} aria-pressed={e === 'elegida'}
                       className="garage-auto relative block"
-                      style={{ width: ANCHO_AUTO, height: ALTO_AUTO, opacity: e === 'atenuada' ? 0.2 : u.activa ? 1 : 0.5 }}
+                      style={{ width: ANCHO_AUTO, height: ALTO_AUTO * suelo }}
                       onPointerEnter={(ev) => { if (ev.pointerType === 'mouse') setSobre(u.id); }}
                       onPointerLeave={() => setSobre((v) => (v === u.id ? null : v))}
                       onFocus={() => setSobre(u.id)} onBlur={() => setSobre((v) => (v === u.id ? null : v))}
@@ -453,20 +418,25 @@ export default function Garage({
                           que escucha al cursor se queda quieta. */}
                       <span className="garage-sube absolute inset-0 block">
                         {render ? (
-                          <Image src={render} alt="" fill priority={i < 4} draggable={false}
-                            sizes="(min-width: 1024px) 800px, 460px" className="object-contain" />
+                          <Foto src={render} w={1200} h={Math.round(((1200 * ALTO_AUTO) / ANCHO_AUTO) * suelo)} suelo={suelo}
+                            className="garage-luz absolute inset-0 h-full w-full"
+                            style={{ opacity: e === 'atenuada' ? 0.2 : u.activa ? 1 : 0.5 }} />
                         ) : (
-                          <Silueta />
+                          <span className="garage-luz absolute left-0 top-0 block"
+                            style={{ width: ANCHO_AUTO, height: ALTO_AUTO, opacity: e === 'atenuada' ? 0.2 : 1 }}>
+                            <Silueta />
+                          </span>
                         )}
                       </span>
-                      <span aria-hidden className="garage-foco pointer-events-none absolute inset-x-6 -bottom-1 h-px bg-acento" />
+                      <span aria-hidden className="garage-foco pointer-events-none absolute inset-x-6 bottom-0 h-px bg-acento" />
                     </button>
+                    </div>
                   </div>
 
                   {/* La placa, parada en el piso delante de la unidad como en
                       una colección. Va en el mundo y no en una capa encima:
                       así se queda con su unidad cuando la cámara se mueve. */}
-                  <div className="garage-pieza" style={{ left: -150, top: -66, width: 300, transform: 'translateZ(170px)' }}>
+                  <div className="garage-pieza garage-fija" style={{ left: -150, top: -66, width: 300, transform: 'translateZ(170px)' }}>
                     {/* La entrada va un nivel adentro: una animación de
                         `transform` en la misma caja le quitaría su
                         profundidad mientras dura y la placa nacería en la
@@ -477,7 +447,6 @@ export default function Garage({
                       style={{
                         opacity: e === 'normal' ? 0.86 : e === 'sobre' ? 1 : 0,
                         transform: e === 'sobre' ? 'translate3d(0,-4px,0)' : 'none',
-                        boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.1), 0 10px 30px rgba(0,0,0,0.6)',
                       }}>
                       <span className="text-[22px] font-medium leading-none tracking-tight text-ink">{u.nombre}</span>
                       <span className="cifra mt-1.5 text-[15px] leading-none text-ink-mute">{u.pie}</span>
@@ -508,6 +477,296 @@ export default function Garage({
       )}
     </div>
   );
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   Lienzos
+
+   Casi todo lo que se ve en el garage es un `<canvas>` y no una caja con
+   degradados, y la razón no es estética.
+
+   Cada pieza de un mundo 3D es una textura en la tarjeta de video. A una caja
+   normal el navegador le escoge la resolución según cómo se vea en pantalla,
+   la parte en baldosas y la vuelve a dibujar cuando cambia de tamaño — que
+   aquí es en cada cuadro, porque basta mover el cursor para que la mirada
+   gire. Con el piso, el muro y el techo midiendo miles de píxeles, en una
+   pantalla de doble densidad eso pasaba del presupuesto de memoria de video,
+   y el navegador empezaba a tirar baldosas: camionetas a medias, lámparas sin
+   disco, la madera cortada en rectángulos. Solo mientras algo se movía.
+
+   Un lienzo no negocia. Mide lo que dice su `width` y su `height`, se pinta
+   una vez y de ahí en adelante la tarjeta solo lo coloca. La escena entera
+   cabe en unas decenas de megas en cualquier pantalla, y mover la cámara no
+   le pide a nadie que dibuje nada.
+
+   Para probar un cambio aquí: Chrome con `--force-gpu-mem-available-mb=128`.
+   Con memoria de sobra el problema no aparece y todo parece estar bien.
+   ══════════════════════════════════════════════════════════════════════════ */
+
+type Pincel = (c: CanvasRenderingContext2D, w: number, h: number) => void;
+
+/**
+ * Un lienzo que se pinta una vez. `w` y `h` son sus píxeles de verdad; el
+ * tamaño que ocupa en el mundo va en `style`, y casi siempre es mayor.
+ *
+ * Se vuelve a pintar cuando cambia `clave` —no `pinta`, que es una función
+ * nueva en cada render— y otra vez cuando terminan de llegar las fuentes: el
+ * número del piso se dibuja con la tipografía de la app, y si se pinta antes
+ * de que cargue sale con la de reserva y así se queda.
+ */
+function Lienzo({ w, h, pinta, clave, className, style }: {
+  w: number; h: number; pinta: Pincel; clave: string;
+  className?: string; style?: React.CSSProperties;
+}) {
+  const ref = useRef<HTMLCanvasElement>(null);
+  const pincel = useRef(pinta);
+  pincel.current = pinta;
+
+  useEffect(() => {
+    let vivo = true;
+    const pintar = () => {
+      const c = ref.current?.getContext('2d');
+      if (!c || !vivo) return;
+      c.setTransform(1, 0, 0, 1, 0, 0);
+      c.globalCompositeOperation = 'source-over';
+      c.clearRect(0, 0, w, h);
+      pincel.current(c, w, h);
+    };
+    pintar();
+    document.fonts?.ready.then(pintar);
+    return () => { vivo = false; };
+  }, [w, h, clave]);
+
+  return <canvas ref={ref} width={w} height={h} aria-hidden className={className} style={style} />;
+}
+
+/**
+ * Una luz: un lienzo dentro de una caja.
+ *
+ * Son dos niveles porque la luz tiene dos opacidades que se multiplican: la
+ * caja lleva el parpadeo de encendido al entrar, y el lienzo lleva qué tan
+ * prendida está según su unidad. En una sola caja, la animación de entrada
+ * pisaría el brillo.
+ */
+function Luz({ espera, nivel, w, h, pinta, style }: {
+  espera: string; nivel: number; w: number; h: number; pinta: Pincel; style: React.CSSProperties;
+}) {
+  return (
+    <div className="garage-pieza garage-enciende" style={{ ...style, '--espera': espera } as React.CSSProperties}>
+      <Lienzo w={w} h={h} clave="luz" pinta={pinta} className="garage-luz block h-full w-full" style={{ opacity: nivel }} />
+    </div>
+  );
+}
+
+/** Las fotos ya pedidas, para que la unidad y su reflejo compartan una. */
+const FOTOS = new Map<string, Promise<HTMLImageElement>>();
+function pedirFoto(src: string): Promise<HTMLImageElement> {
+  let p = FOTOS.get(src);
+  if (!p) {
+    p = new Promise((ok, mal) => {
+      const img = new window.Image();
+      img.decoding = 'async';
+      img.onload = () => ok(img);
+      img.onerror = mal;
+      // El optimizador de Next la entrega a 1200 de ancho y en un formato
+      // ligero; el PNG original pesa un mega por unidad.
+      img.src = `/_next/image?url=${encodeURIComponent(src)}&w=1200&q=90`;
+    });
+    FOTOS.set(src, p);
+  }
+  return p;
+}
+
+/**
+ * El render de una unidad, pintado en un lienzo.
+ *
+ * `h` recorta por abajo: el lienzo termina en la línea donde pisan las
+ * llantas. Con `reflejo`, se pinta volteada sobre esa línea y desvanecida
+ * hacia abajo.
+ */
+function Foto({ src, w, h, suelo, reflejo = false, className, style }: {
+  src: string; w: number; h: number; suelo: number; reflejo?: boolean;
+  className?: string; style?: React.CSSProperties;
+}) {
+  const ref = useRef<HTMLCanvasElement>(null);
+
+  useEffect(() => {
+    let vivo = true;
+    pedirFoto(src).then((img) => {
+      const c = ref.current?.getContext('2d');
+      if (!c || !vivo) return;
+      const alto = (w * 787) / 1400;   // la foto entera, a este ancho
+      c.setTransform(1, 0, 0, 1, 0, 0);
+      c.globalCompositeOperation = 'source-over';
+      c.clearRect(0, 0, w, h);
+      c.imageSmoothingQuality = 'high';
+      if (!reflejo) { c.drawImage(img, 0, 0, w, alto); return; }
+      c.save();
+      c.scale(1, -1);
+      c.drawImage(img, 0, -alto * suelo, w, alto);
+      c.restore();
+      const g = c.createLinearGradient(0, 0, 0, h);
+      g.addColorStop(0, 'rgba(0,0,0,1)');
+      g.addColorStop(0.92, 'rgba(0,0,0,0)');
+      c.globalCompositeOperation = 'destination-in';
+      c.fillStyle = g;
+      c.fillRect(0, 0, w, h);
+    }).catch(() => { /* sin foto no hay nada que pintar: queda el hueco */ });
+    return () => { vivo = false; };
+  }, [src, w, h, suelo, reflejo]);
+
+  return <canvas ref={ref} width={w} height={h} aria-hidden className={className} style={style} />;
+}
+
+/* ── Los pinceles ── */
+
+const pintaMuro: Pincel = (c, w, h) => {
+  const g = c.createLinearGradient(0, 0, 0, h);
+  g.addColorStop(0, '#070708'); g.addColorStop(0.45, '#0d0d10');
+  g.addColorStop(0.8, '#131316'); g.addColorStop(1, '#0b0b0d');
+  c.fillStyle = g;
+  c.fillRect(0, 0, w, h);
+};
+
+function pintaPiso(c: CanvasRenderingContext2D, w: number, h: number, n: number, anchoMundo: number) {
+  // Se pinta en medidas del mundo; la escala lo baja a los píxeles del lienzo.
+  const k = w / anchoMundo;
+  c.scale(k, k);
+  const W = anchoMundo, H = HONDO;
+  const x0 = W / 2, z0 = H / 2 - CENTRO_Z;          // el (0, 0) del mundo, en la hoja
+  const xDe = (i: number) => (i - (n - 1) / 2) * BAHIA;
+
+  const base = c.createLinearGradient(0, 0, 0, H);
+  base.addColorStop(0, 'rgba(8,8,10,0.86)');
+  base.addColorStop(1, 'rgba(19,19,23,0.74)');
+  c.fillStyle = base;
+  c.fillRect(0, 0, W, H);
+
+  // Juntas del concreto.
+  c.fillStyle = 'rgba(255,255,255,0.045)';
+  for (let x = (x0 % 270); x < W; x += 270) c.fillRect(x, 0, 2, H);
+  for (let y = (z0 % 260); y < H; y += 260) c.fillRect(0, y, W, 2);
+
+  // Rayas entre cajones.
+  for (let i = 0; i <= n; i++) {
+    const x = x0 + xDe(i) - BAHIA / 2;
+    const g = c.createLinearGradient(0, z0 - 260, 0, z0 + 340);
+    g.addColorStop(0, 'rgba(255,255,255,0)');
+    g.addColorStop(0.3, 'rgba(255,255,255,0.1)');
+    g.addColorStop(1, 'rgba(255,255,255,0.1)');
+    c.fillStyle = g;
+    c.fillRect(x - 1.5, z0 - 260, 3, 600);
+  }
+
+  for (let i = 0; i < n; i++) {
+    const x = x0 + xDe(i);
+    // La sombra de contacto: lo que pega la unidad al piso.
+    c.save();
+    c.translate(x, z0 + 7);
+    c.scale(1, 170 / 430);
+    const s = c.createRadialGradient(0, 0, 0, 0, 0, 215);
+    s.addColorStop(0, 'rgba(0,0,0,0.9)'); s.addColorStop(0.55, 'rgba(0,0,0,0.55)'); s.addColorStop(1, 'rgba(0,0,0,0)');
+    c.fillStyle = s;
+    c.fillRect(-215, -215, 430, 430);
+    c.restore();
+    // El número pintado en el piso.
+    c.font = `700 150px ${getComputedStyle(c.canvas).fontFamily}`;
+    c.textAlign = 'center';
+    c.textBaseline = 'top';
+    c.fillStyle = 'rgba(255,255,255,0.055)';
+    c.fillText(String(i + 1).padStart(2, '0'), x, z0 + 180);
+  }
+
+  // La orilla de enfrente se desvanece: el piso no se acaba, se pierde en lo
+  // oscuro.
+  const f = c.createLinearGradient(0, 0, 0, H);
+  f.addColorStop(0, 'rgba(0,0,0,1)'); f.addColorStop(0.62, 'rgba(0,0,0,1)'); f.addColorStop(0.86, 'rgba(0,0,0,0.35)'); f.addColorStop(1, 'rgba(0,0,0,0)');
+  c.globalCompositeOperation = 'destination-in';
+  c.fillStyle = f;
+  c.fillRect(0, 0, W, H);
+}
+
+const pintaTecho: Pincel = (c, w, h) => {
+  c.fillStyle = '#070708';
+  c.fillRect(0, 0, w, h);
+  // Vigas. El lienzo va a un cuarto: 196 del mundo son 49 de aquí.
+  for (let x = 0; x < w; x += 49) {
+    c.fillStyle = 'rgba(255,255,255,0.05)'; c.fillRect(x + 43, 0, 1, h);
+    c.fillStyle = 'rgba(0,0,0,0.7)'; c.fillRect(x + 44, 0, 5, h);
+  }
+  // Arriba de la hoja es lo más cercano a la cámara: se desvanece.
+  const f = c.createLinearGradient(0, 0, 0, h);
+  f.addColorStop(0, 'rgba(0,0,0,0)'); f.addColorStop(0.3, 'rgba(0,0,0,1)'); f.addColorStop(1, 'rgba(0,0,0,1)');
+  c.globalCompositeOperation = 'destination-in';
+  c.fillStyle = f;
+  c.fillRect(0, 0, w, h);
+};
+
+/** Un degradado redondo que llena el lienzo aunque no sea cuadrado. */
+function ovalo(c: CanvasRenderingContext2D, w: number, h: number, paradas: [number, string][]) {
+  c.save();
+  c.translate(w / 2, h / 2);
+  c.scale(w / 2, h / 2);
+  const g = c.createRadialGradient(0, 0, 0, 0, 0, 1);
+  for (const [p, color] of paradas) g.addColorStop(p, color);
+  c.fillStyle = g;
+  c.fillRect(-1, -1, 2, 2);
+  c.restore();
+}
+
+const pintaCharco: Pincel = (c, w, h) =>
+  ovalo(c, w, h, [[0, 'rgba(255,250,240,0.26)'], [0.55, 'rgba(255,250,240,0.07)'], [1, 'rgba(255,250,240,0)']]);
+
+const pintaResplandor: Pincel = (c, w, h) =>
+  ovalo(c, w, h, [[0, 'rgba(255,248,235,0.3)'], [0.55, 'rgba(255,248,235,0.08)'], [1, 'rgba(255,248,235,0)']]);
+
+const pintaMadera: Pincel = (c, w, h) => {
+  // Tablillas: a media resolución, 13 del mundo son 6.5 de aquí.
+  for (let x = 0; x < w; x += 6.5) {
+    c.fillStyle = 'rgba(204,126,62,0.62)'; c.fillRect(x, 0, 4.5, h);
+    c.fillStyle = 'rgba(38,20,9,0.9)'; c.fillRect(x + 4.5, 0, 2, h);
+  }
+  // Solo se ve donde le pega la luz.
+  c.globalCompositeOperation = 'destination-in';
+  c.save();
+  c.translate(w / 2, h * 0.42);
+  c.scale(w * 0.62, h * 0.78);
+  const g = c.createRadialGradient(0, 0, 0, 0, 0, 1);
+  g.addColorStop(0.18, 'rgba(0,0,0,1)'); g.addColorStop(0.74, 'rgba(0,0,0,0)');
+  c.fillStyle = g;
+  c.fillRect(-2, -2, 4, 4);
+  c.restore();
+};
+
+const pintaHaz: Pincel = (c, w, h) => {
+  const g = c.createLinearGradient(0, 0, 0, h);
+  g.addColorStop(0, 'rgba(255,250,240,0.22)'); g.addColorStop(0.5, 'rgba(255,250,240,0.06)'); g.addColorStop(0.97, 'rgba(255,250,240,0)');
+  c.fillStyle = g;
+  c.beginPath();
+  c.moveTo(w * 0.31, 0); c.lineTo(w * 0.69, 0); c.lineTo(w, h); c.lineTo(0, h);
+  c.closePath();
+  c.fill();
+};
+
+/** El disco de la lámpara con su halo alrededor. El disco mide 250 de 470. */
+const pintaDisco: Pincel = (c, w) => {
+  const m = w / 2, r = (125 / 235) * m;
+  const halo = c.createRadialGradient(m, m, r * 0.9, m, m, m);
+  halo.addColorStop(0, 'rgba(255,248,235,0.4)'); halo.addColorStop(1, 'rgba(255,248,235,0)');
+  c.fillStyle = halo;
+  c.fillRect(0, 0, w, w);
+  const d = c.createRadialGradient(m, m, 0, m, m, r);
+  d.addColorStop(0, '#ffffff'); d.addColorStop(0.64, '#ffffff'); d.addColorStop(0.82, '#f3efe6'); d.addColorStop(1, 'rgba(243,239,230,0.55)');
+  c.fillStyle = d;
+  c.beginPath(); c.arc(m, m, r, 0, Math.PI * 2); c.fill();
+};
+
+function pintaAnillo(c: CanvasRenderingContext2D, w: number, color: string, rayas: boolean, radio = w / 2 - 2) {
+  c.strokeStyle = color;
+  c.lineWidth = 2;
+  if (rayas) c.setLineDash([9, 7]);
+  c.beginPath(); c.arc(w / 2, w / 2, radio, 0, Math.PI * 2); c.stroke();
+  c.setLineDash([]);
 }
 
 function Flecha({ lado, apagada, onClick }: { lado: 'izq' | 'der'; apagada: boolean; onClick: () => void }) {

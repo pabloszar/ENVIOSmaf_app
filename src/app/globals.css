@@ -844,6 +844,14 @@ body::after {
  */
 .garage-vuela { transition: transform 760ms var(--curva-entrada); }
 .garage-pieza { position: absolute; left: 0; top: 0; }
+/*
+ * Las pocas piezas del mundo que siguen siendo cajas y no lienzos —la placa,
+ * las columnas, el cable—. Con `will-change` el navegador las dibuja una vez
+ * y de ahí en adelante solo las transforma, en vez de redibujarlas cada vez
+ * que la cámara las agranda o las achica un pelo. Son chicas: lo grande va
+ * en lienzos (ver `Lienzo` en Garage.tsx), que es lo que de verdad lo arregla.
+ */
+.garage-fija { will-change: transform; }
 
 /* Las luces cambian de intensidad, no de sitio. */
 .garage-luz { transition: opacity var(--t-lento) var(--curva-entrada); }
@@ -879,6 +887,7 @@ body::after {
   cursor: pointer;
 }
 .garage-sube { transition: transform var(--t-medio) var(--curva-mando); }
+.garage-sube { transform-origin: 50% 85%; }
 .garage-auto:hover .garage-sube,
 .garage-auto:focus-visible .garage-sube { transform: translate3d(0, -6px, 0) scale(1.015); }
 .garage-auto:focus-visible .garage-foco { opacity: 1; }
